@@ -6,6 +6,7 @@ import { Plus, Trash2, Lock } from "lucide-react";
 
 import { saveProduct } from "@/server/actions/cardapio";
 import type { EditableProduct } from "@/server/queries/cardapio";
+import { useToast } from "@/components/ui/toast";
 
 type FormOptionItem = { key: string; id?: string; name: string; price: string; usedCount: number };
 type FormOptionGroup = {
@@ -51,6 +52,7 @@ export function ProductForm({
   const [groups, setGroups] = useState<FormOptionGroup[]>(toFormGroups(initial));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   function addGroup() {
     setGroups((g) => [
@@ -123,7 +125,10 @@ export function ProductForm({
           items: g.items.map((i) => ({ id: i.id, name: i.name.trim(), price: Number(i.price.replace(",", ".")) || 0 })),
         })),
       });
-      if (result?.error) setError(result.error);
+      if (result?.error) {
+        setError(result.error);
+        toast.error(result.error);
+      }
       // on success, saveProduct redirects to /cardapio
     });
   }

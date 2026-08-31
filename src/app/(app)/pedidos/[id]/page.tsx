@@ -1,13 +1,11 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, MapPin, Phone, StickyNote } from "lucide-react";
+import { MapPin, Phone, StickyNote } from "lucide-react";
 
 import { getTenant } from "@/lib/tenant";
 import { getOrderDetail } from "@/server/queries/orders";
-import { advanceOrderStatus } from "@/server/actions/orders";
 import { FLOW, TONE_CLASSES, CHANNEL_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
 import { formatBRL } from "@/lib/format";
-import { CancelOrderButton } from "@/components/pedidos/cancel-order-button";
+import { OrderStatusHeader } from "@/components/pedidos/order-status-header";
 
 function formatDateTime(date: Date) {
   return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -19,40 +17,9 @@ export default async function OrderDetailPage(props: PageProps<"/pedidos/[id]">)
   const order = await getOrderDetail(tenant.restaurantId, id);
   if (!order) notFound();
 
-  const flow = FLOW[order.status];
-  const tone = TONE_CLASSES[flow.tone];
-  const StatusIcon = flow.icon;
-  const isFinished = order.status === "CONCLUIDO" || order.status === "CANCELADO";
-
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5 px-[clamp(18px,2.4vw,34px)] py-7 pb-16">
-      <Link href="/pedidos" className="flex w-fit items-center gap-1.5 text-[13px] font-medium text-muted hover:text-ink">
-        <ArrowLeft className="h-[15px] w-[15px]" />
-        Voltar para pedidos
-      </Link>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <span className={`flex items-center gap-1.5 rounded-[9px] px-[11px] py-1.5 text-[13px] font-semibold ${tone.bg} ${tone.fg}`}>
-          <StatusIcon className={`h-[15px] w-[15px] ${tone.icon}`} />
-          {flow.chip}
-        </span>
-        <h1 className="text-[21px] font-semibold tracking-tight">Pedido #{order.number}</h1>
-        <span className="text-[12.5px] text-faint">criado em {formatDateTime(order.createdAt)}</span>
-
-        <div className="ml-auto flex gap-2.5">
-          {!isFinished ? <CancelOrderButton orderId={order.id} /> : null}
-          {flow.next ? (
-            <form action={advanceOrderStatus.bind(null, order.id)}>
-              <button
-                type="submit"
-                className="flex min-h-[44px] items-center justify-center gap-2 rounded-[11px] bg-charcoal px-4 text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover active:scale-[0.98]"
-              >
-                {flow.nextLabel}
-              </button>
-            </form>
-          ) : null}
-        </div>
-      </div>
+      <OrderStatusHeader orderId={order.id} number={order.number} createdAt={order.createdAt} status={order.status} />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_300px]">
         <div className="flex flex-col gap-5">

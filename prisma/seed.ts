@@ -35,6 +35,19 @@ function addMinutes(date: Date, minutes: number) {
 }
 
 async function main() {
+  // Guard rail: this seed creates ~1200 fake orders and demo customers. It's
+  // meant for a fresh/local database only — running it against a database
+  // already in real use would mix fictitious data into real business data.
+  // Require an explicit opt-in every time rather than trusting whoever runs
+  // `npm run db:seed` to remember which database they're pointed at.
+  if (process.env.ALLOW_SEED !== "true") {
+    throw new Error(
+      "Seed bloqueado: isso criaria pedidos/clientes fictícios. " +
+        "Se você tem certeza de que este banco pode receber dados de demonstração " +
+        "(ambiente novo/local, não um banco em uso real), defina ALLOW_SEED=true e rode de novo.",
+    );
+  }
+
   // ---------- tenant + owner ----------
   const restaurant = await db.restaurant.upsert({
     where: { slug: "casa-bonfim" },

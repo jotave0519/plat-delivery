@@ -2,28 +2,34 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useTransition } from "react";
+import { useOptimistic, useTransition } from "react";
 import { Pencil, EyeOff, Eye, Trash2, ImageOff } from "lucide-react";
 
 import { formatBRL } from "@/lib/format";
 import { deleteProduct, toggleProductAvailability } from "@/server/actions/cardapio";
 import type { CardapioProduct } from "@/server/queries/cardapio";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 
 export function ProductCard({ product }: { product: CardapioProduct }) {
   const [pending, startTransition] = useTransition();
+  // Same reasoning as OrderCard's optimistic status: a boolean flip with no
+  // server-computed value involved, safe to reflect immediately.
+  const [optimisticAvailable, setOptimisticAvailable] = useOptimistic(
+    product.isAvailable,
+    (_current, next: boolean) => next,
+  );
 
-  function handleDelete() {
-    if (!confirm(`Excluir "${product.name}"? Essa ação não pode ser desfeita.`)) return;
+  function handleToggle() {
     startTransition(async () => {
-      const result = await deleteProduct(product.id);
-      if (result?.error) alert(result.error);
+      setOptimisticAvailable(!optimisticAvailable);
+      await toggleProductAvailability(product.id);
     });
   }
 
   return (
     <div
       className={`flex flex-col gap-3 rounded-[16px] border border-border-soft p-3.5 transition-opacity ${
-        product.isAvailable ? "" : "opacity-60"
+        optimisticAvailable ? "" : "opacity-60"
       }`}
     >
       <div className="flex gap-3">
@@ -37,7 +43,7 @@ export function ProductCard({ product }: { product: CardapioProduct }) {
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[14px] font-medium">{product.name}</span>
           <span className="text-[13.5px] font-semibold text-ink">{formatBRL(product.price)}</span>
-          {!product.isAvailable ? <span className="text-[11.5px] font-medium text-warn-fg">Pausado</span> : null}
+          {!optimisticAvailable ? <span className="text-[11.5px] font-medium text-warn-fg">Pausado</span> : null}
         </div>
       </div>
 
@@ -45,11 +51,11 @@ export function ProductCard({ product }: { product: CardapioProduct }) {
         <button
           type="button"
           disabled={pending}
-          onClick={() => startTransition(() => toggleProductAvailability(product.id))}
+          onClick={handleToggle}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-[9px] border border-border-strong py-1.5 text-[12.5px] font-medium text-muted transition-colors hover:border-accent hover:text-accent-hover disabled:opacity-50"
         >
-          {product.isAvailable ? <EyeOff className="h-[13px] w-[13px]" /> : <Eye className="h-[13px] w-[13px]" />}
-          {product.isAvailable ? "Pausar" : "Ativar"}
+          {optimisticAvailable ? <EyeOff className="h-[13px] w-[13px]" /> : <Eye className="h-[13px] w-[13px]" />}
+          {optimisticAvailable ? "Pausar" : "Ativar"}
         </button>
         <Link
           href={`/cardapio/produtos/${product.id}`}
@@ -58,15 +64,14 @@ export function ProductCard({ product }: { product: CardapioProduct }) {
         >
           <Pencil className="h-[13px] w-[13px]" />
         </Link>
-        <button
-          type="button"
-          disabled={pending || product.orderedCount > 0}
-          onClick={handleDelete}
+        <ConfirmButton
+          action={deleteProduct.bind(null, product.id)}
+          confirmMessage={`Excluir "${product.name}"? Essa ação não pode ser desfeita.`}
+          icon={<Trash2 className="h-[13px] w-[13px]" />}
+          disabled={product.orderedCount > 0}
           title={product.orderedCount > 0 ? "Já usado em pedidos — não pode ser excluído" : "Excluir"}
           className="grid h-8 w-8 place-items-center rounded-[9px] border border-border-strong text-muted transition-colors hover:border-crit hover:text-crit disabled:opacity-30"
-        >
-          <Trash2 className="h-[13px] w-[13px]" />
-        </button>
+        />
       </div>
     </div>
   );

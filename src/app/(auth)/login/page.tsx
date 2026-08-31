@@ -29,10 +29,6 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <div className="rounded-[20px] border border-border bg-surface p-7 shadow-[0_1px_2px_rgba(26,29,35,.04)]">
           <LoginForm callbackUrl={callbackUrlParam} />
         </div>
-
-        <p className="text-center text-[12px] text-faint">
-          Ambiente de demonstração — use carla@casabonfim.com.br / senha123
-        </p>
       </div>
     </div>
   );

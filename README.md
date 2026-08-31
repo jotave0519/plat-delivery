@@ -55,18 +55,21 @@ sobe um Postgres local; aponte `DATABASE_URL`/`DIRECT_URL` para
 usado em produção e não é referenciado pelo `Dockerfile`.
 
 ```bash
-npm install                 # instala dependências (gera o Prisma Client via postinstall)
-npx prisma migrate dev      # aplica as migrations (dev — usa DIRECT_URL)
-npm run db:seed             # popula dados de demonstração
-npm run dev                 # http://localhost:3000
+npm install                            # instala dependências (gera o Prisma Client via postinstall)
+npx prisma migrate dev                 # aplica as migrations (dev — usa DIRECT_URL)
+ALLOW_SEED=true npm run db:seed        # popula dados de demonstração (trava proposital, ver abaixo)
+npm run dev                            # http://localhost:3000
 ```
 
-Login de demonstração: `carla@casabonfim.com.br` / `senha123`
+Login de demonstração (só existe se você rodou o seed): `carla@casabonfim.com.br` / `senha123` — não é mais exibido na tela de login do app (era um risco expor uma senha válida publicamente assim que a plataforma passasse a ser usada de verdade).
 
-> `npm run db:seed` gera dados relativos ao momento em que é executado
-> (pedidos "de hoje", pedidos em aberto com "X min atrás" etc.) — rode de
-> novo a qualquer momento para uma base de demonstração fresca. Ele não é
-> idempotente sozinho: para recomeçar do zero, use
+> `npm run db:seed` gera ~1200 pedidos e clientes fictícios, relativos ao
+> momento em que é executado — **por isso exige `ALLOW_SEED=true`
+> explicitamente**: sem essa variável, o script recusa rodar (ver comentário
+> no início de `prisma/seed.ts`). Isso existe para não recriar dados
+> fictícios por engano num banco já em uso real — sempre confirme qual
+> `DATABASE_URL`/`DIRECT_URL` está ativo antes de setar `ALLOW_SEED=true`.
+> Ele não é idempotente sozinho: para recomeçar do zero, use
 > `npx prisma migrate reset` antes (⚠️ apaga todos os dados — só em
 > ambiente de desenvolvimento).
 >
@@ -74,6 +77,14 @@ Login de demonstração: `carla@casabonfim.com.br` / `senha123`
 > são só uma ferramenta de dev/teste — nunca obrigatórios. Para conectar a
 > um restaurante real, crie a `Restaurant`/`User` correspondente (via
 > `prisma studio` ou um script próprio) e não rode o seed nesse banco.
+>
+> **Zerar dados de negócio sem tocar em schema/usuários**: `npx tsx
+> prisma/reset-business-data.ts` (dry run, só mostra contagens) e `npx tsx
+> prisma/reset-business-data.ts --confirm` (apaga de verdade) — apaga
+> Customer/Category/Product/Order/StockItem/FinancialEntry etc. de todo
+> restaurante, mas nunca `Restaurant`, `User` ou `WhatsappConnection`. Foi
+> assim que o banco de produção foi zerado para uso real (ver seção "O que
+> já existe").
 
 ## Deploy em produção (EasyPanel)
 
@@ -90,6 +101,12 @@ session**, não o modo transaction (ver comentários em `.env.example`).
 4. Health check: `GET /api/health` → `{"status":"ok"}`. O `Dockerfile` já
    declara um `HEALTHCHECK` nativo do Docker; se o EasyPanel pedir para
    configurar um manualmente, aponte para esse caminho.
+5. **Porta do domínio: `3000`.** O container escuta em `3000`
+   (`EXPOSE 3000`/`ENV PORT=3000` no `Dockerfile`) — ao criar/editar o
+   domínio do app no EasyPanel, confirme que a porta de destino configurada
+   é `3000`, não `80` (o padrão do EasyPanel). Configurar isso errado é
+   exatamente o que já causou um "Service is not reachable" numa tentativa
+   de deploy anterior, mesmo com o container rodando normalmente.
 
 Para pular a migration automática em um boot específico (ex.: quiser rodar
 manualmente antes), defina `SKIP_MIGRATIONS=true` naquele deploy.
@@ -146,7 +163,8 @@ publicamente alcançável — em produção no EasyPanel, não em dev local.
 Dockerfile, docker-entrypoint.sh   imagem de produção (ver seção EasyPanel)
 docker-compose.yml                 Postgres local opcional (não usado em produção)
 prisma/schema.prisma                modelo de dados completo (todos os módulos)
-prisma/seed.ts                      dados de demonstração
+prisma/seed.ts                      dados de demonstração (exige ALLOW_SEED=true, ver seção de setup)
+prisma/reset-business-data.ts       zera dados de negócio sem tocar em schema/Restaurant/User (dry-run por padrão)
 prisma.config.ts                    config do Prisma 7 (datasource via DIRECT_URL, seed)
 src/proxy.ts                        guarda de autenticação (era middleware.ts até o Next 15 — precisa
                                      ficar dentro de src/, não na raiz, já que o app usa src/app)
@@ -166,7 +184,10 @@ src/components/estoque              componentes do módulo de Estoque (card, mov
 src/components/financeiro            componentes do módulo Financeiro (período, lançamentos)
 src/components/configuracoes         componentes do módulo Configurações (restaurante, horário, usuários)
 src/components/ui/confirm-button     botão genérico "confirmar + rodar Server Action" (usado em vários módulos)
-src/components/layout                Sidebar, MobileNav, stub "Em construção"
+src/components/ui/skeleton           primitivo de skeleton usado pelos loading.tsx de cada rota
+src/components/ui/toast              ToastProvider/useToast() — feedback de sucesso/erro, monta em (app)/layout.tsx
+src/components/layout                Sidebar, MobileNav, NavLink (feedback de navegação), stub "Em construção"
+src/app/(app)/*/loading.tsx           skeleton por rota (dashboard, pedidos, cardápio, clientes, estoque, financeiro)
 src/lib                              tokens de domínio (fluxo de status, formatação, tenant, horário de funcionamento)
 src/server/actions                   Server Actions (mutações)
 src/server/queries                   consultas de leitura (dashboard, pedidos, cardápio, clientes, estoque, financeiro, configurações)
@@ -222,6 +243,34 @@ src/server/queries                   consultas de leitura (dashboard, pedidos, c
   Evolution API de verdade (QR code, status ao vivo, desconectar) — ver
   seção "Evolution API" acima. A conversa/agente de IA em si ainda não
   existe (ver roadmap).
+- **Preparação para uso real**: banco de produção zerado de dados fictícios
+  (~1200 pedidos de demo e afins removidos via `prisma/reset-business-data.ts`,
+  mantendo `Restaurant`/`User`/`WhatsappConnection` intactos), seed travado
+  contra reexecução acidental (`ALLOW_SEED=true` obrigatório), credencial de
+  demonstração removida da tela de login pública. Além disso, uma rodada de
+  performance/fluidez: `loading.tsx`/skeleton em cada rota principal (não
+  havia nenhum — toda navegação congelava a tela até os dados chegarem),
+  feedback de "carregando" no botão de avançar status do pedido (o mais
+  clicado do app, antes sem nenhum indicador), busca de Pedidos/Clientes
+  convertida para navegação client-side (antes recarregava a página
+  inteira), troca de aba do quadro de pedidos do Dashboard agora é
+  instantânea (filtro no cliente, sem round-trip — antes navegava ao
+  servidor para filtrar dados que já estavam na página), índice novo em
+  `Order(restaurantId, createdAt)` para as duas telas mais consultadas
+  (Dashboard, Financeiro), e um sistema de toasts (`useToast()`) substituindo
+  o `alert()` nativo e o silêncio total que havia após salvar formulários.
+- **Refinamento de fluidez (parte 2)**: atualização otimista (`useOptimistic`,
+  React 19) ao avançar status de pedido e ao pausar/ativar produto — a UI
+  muda no clique, sem esperar a Server Action responder (confirmado via
+  throttling de rede real, não só "parece rápido"); filtro de período
+  personalizado do Financeiro e o CTA do alerta crítico do Dashboard, que
+  tinham ficado de fora da rodada anterior (formulário GET nativo e `<a>`
+  puro), convertidos pro mesmo padrão de navegação client-side; exclusão de
+  produto unificada com `ConfirmButton`/toast (antes usava `confirm()`/
+  `alert()` nativos). Auditoria completa de deploy/EasyPanel confirmou que
+  Dockerfile, entrypoint, variáveis de ambiente e separação dev/produção já
+  estavam corretos — só 2 ajustes de documentação (porta 3000 explícita na
+  seção EasyPanel, comentário sobre pooler vs. conexão direta em `db.ts`).
 
 ## Próximas etapas (roadmap)
 

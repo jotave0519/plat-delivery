@@ -9,6 +9,7 @@ import type { CatalogCategory } from "@/server/queries/orders";
 import { CartPanel } from "@/components/pedidos/cart-panel";
 import { CustomerPicker, type SelectedCustomer } from "@/components/pedidos/customer-picker";
 import { ProductPicker } from "@/components/pedidos/product-picker";
+import { useToast } from "@/components/ui/toast";
 
 type Fulfillment = "DELIVERY" | "RETIRADA";
 type Channel = "TELEFONE" | "BALCAO";
@@ -41,6 +42,7 @@ export function NewOrderForm({ catalog }: { catalog: CatalogCategory[] }) {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   // Prefill the delivery address from the selected customer's last known
   // address, without clobbering something the attendant already typed.
@@ -86,7 +88,10 @@ export function NewOrderForm({ catalog }: { catalog: CatalogCategory[] }) {
         })),
       });
       // On success createManualOrder redirects and this line never runs.
-      if (result?.error) setError(result.error);
+      if (result?.error) {
+        setError(result.error);
+        toast.error(result.error);
+      }
     });
   }
 

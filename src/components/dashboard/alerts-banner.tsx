@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, CircleCheck, ChevronDown, ChevronUp, Hourglass, Boxes, EyeOff } from "lucide-react";
 
 import type { DashboardData } from "@/server/queries/dashboard";
@@ -53,12 +54,12 @@ export function AlertsBanner({ alerts }: { alerts: DashboardData["alerts"] }) {
           </div>
         </div>
         {!critical.positive ? (
-          <a
+          <Link
             href={`/dashboard?stage=${critical.targetStatus}`}
             className="ml-auto flex items-center gap-2 rounded-[11px] bg-crit px-4 py-[11px] text-[13.5px] font-medium text-white transition-colors hover:bg-crit-hover active:scale-[0.98]"
           >
             {critical.actionLabel}
-          </a>
+          </Link>
         ) : null}
       </div>
 

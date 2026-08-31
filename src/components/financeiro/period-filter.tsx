@@ -1,4 +1,8 @@
+"use client";
+
+import { useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import type { FinanceiroPeriod } from "@/server/queries/financeiro";
 
@@ -10,6 +14,20 @@ const PERIODS: { value: FinanceiroPeriod; label: string }[] = [
 ];
 
 export function PeriodFilter({ period, from, to }: { period: FinanceiroPeriod; from: string; to: string }) {
+  const router = useRouter();
+  const fromRef = useRef<HTMLInputElement>(null);
+  const toRef = useRef<HTMLInputElement>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    // Client-side navigation instead of a full browser GET — matches the
+    // period tabs above (already <Link>) and the other filter bars.
+    e.preventDefault();
+    const f = fromRef.current?.value;
+    const t = toRef.current?.value;
+    if (!f || !t) return;
+    router.push(`/financeiro?period=personalizado&from=${f}&to=${t}`);
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex w-fit rounded-[11px] border border-border-strong bg-surface p-[3px]">
@@ -27,13 +45,12 @@ export function PeriodFilter({ period, from, to }: { period: FinanceiroPeriod; f
       </div>
 
       {period === "personalizado" ? (
-        <form action="/financeiro" method="GET" className="flex flex-wrap items-end gap-2.5">
-          <input type="hidden" name="period" value="personalizado" />
+        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2.5">
           <label className="flex flex-col gap-1">
             <span className="text-[12px] font-medium text-muted">De</span>
             <input
+              ref={fromRef}
               type="date"
-              name="from"
               defaultValue={from}
               required
               className="rounded-[9px] border border-border-strong bg-surface px-3 py-2 text-[13px] outline-none focus:border-accent"
@@ -42,8 +59,8 @@ export function PeriodFilter({ period, from, to }: { period: FinanceiroPeriod; f
           <label className="flex flex-col gap-1">
             <span className="text-[12px] font-medium text-muted">Até</span>
             <input
+              ref={toRef}
               type="date"
-              name="to"
               defaultValue={to}
               required
               className="rounded-[9px] border border-border-strong bg-surface px-3 py-2 text-[13px] outline-none focus:border-accent"

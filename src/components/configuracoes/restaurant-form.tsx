@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import { saveRestaurantInfo } from "@/server/actions/configuracoes";
 import type { RestaurantSettings } from "@/server/queries/configuracoes";
+import { useToast } from "@/components/ui/toast";
 
 const inputClass =
   "rounded-[11px] border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-accent";
@@ -16,6 +17,7 @@ export function RestaurantForm({ restaurant }: { restaurant: RestaurantSettings 
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,9 +29,11 @@ export function RestaurantForm({ restaurant }: { restaurant: RestaurantSettings 
       const result = await saveRestaurantInfo({ name, phone, address, pixKey });
       if (result?.error) {
         setError(result.error);
+        toast.error(result.error);
         return;
       }
       setSaved(true);
+      toast.success("Dados do restaurante salvos.");
     });
   }
 

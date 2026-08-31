@@ -6,6 +6,7 @@ import { UtensilsCrossed, Monitor, LogOut } from "lucide-react";
 
 import { NAV_ITEMS } from "@/lib/nav";
 import { logoutAction } from "@/server/actions/auth";
+import { NavLinkContent } from "@/components/layout/nav-link-content";
 
 type SidebarProps = {
   restaurantName: string;
@@ -44,17 +45,19 @@ export function Sidebar({ restaurantName, userName, userRoleLabel, badges }: Sid
               key={item.href}
               href={item.href}
               title={item.label}
-              className={`flex items-center gap-2.5 rounded-[11px] px-2.5 py-2.5 text-[14px] font-medium transition-colors ${
+              className={`rounded-[11px] px-2.5 py-2.5 text-[14px] font-medium transition-colors ${
                 active ? "bg-neutral-bg text-ink" : "text-muted hover:bg-neutral-bg"
               }`}
             >
-              <Icon className="h-[17px] w-[17px] flex-none" />
-              <span className="hidden truncate lg:inline">{item.label}</span>
-              {badge ? (
-                <span className="ml-auto hidden rounded-[7px] bg-accent-bg px-[7px] py-px text-[11.5px] font-semibold text-accent-hover lg:inline">
-                  {badge}
-                </span>
-              ) : null}
+              <NavLinkContent className="flex items-center gap-2.5">
+                <Icon className="h-[17px] w-[17px] flex-none" />
+                <span className="hidden truncate lg:inline">{item.label}</span>
+                {badge ? (
+                  <span className="ml-auto hidden rounded-[7px] bg-accent-bg px-[7px] py-px text-[11.5px] font-semibold text-accent-hover lg:inline">
+                    {badge}
+                  </span>
+                ) : null}
+              </NavLinkContent>
             </Link>
           );
         })}

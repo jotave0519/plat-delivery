@@ -1,15 +1,37 @@
+"use client";
+
+import { useOptimistic } from "react";
 import { Clock, MessageSquare, MessageCircle } from "lucide-react";
 
 import { FLOW, TONE_CLASSES } from "@/lib/order-flow";
 import { formatBRL, formatElapsed } from "@/lib/format";
 import type { QueueOrder } from "@/server/queries/dashboard";
+import type { OrderStatus } from "@/generated/prisma";
 import { advanceOrderStatus } from "@/server/actions/orders";
+import { AdvanceStatusButton } from "@/components/pedidos/advance-status-button";
 
 export function OrderCard({ order }: { order: QueueOrder }) {
-  const flow = FLOW[order.status];
+  // Optimistic: the chip/button reflect the *next* status the instant the
+  // button is clicked, instead of waiting for the Server Action + revalidate
+  // round-trip. Safe here because the transition is a pure function of the
+  // current status (FLOW[status].next), not something the server computes
+  // independently — if the action fails, React automatically reverts to
+  // `order.status` once the transition settles.
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(
+    order.status,
+    (_current, next: OrderStatus) => next,
+  );
+  const flow = FLOW[optimisticStatus];
   const tone = TONE_CLASSES[order.atrasado ? "crit" : flow.tone];
   const StatusIcon = flow.icon;
   const NextIcon = flow.nextIcon;
+
+  async function handleAdvance() {
+    const next = FLOW[optimisticStatus].next;
+    if (!next) return;
+    setOptimisticStatus(next);
+    await advanceOrderStatus(order.id);
+  }
 
   return (
     <div className="flex flex-col gap-3 rounded-[18px] border border-[#EDEFF3] p-4 transition-shadow hover:shadow-[0_14px_30px_-22px_rgba(26,29,35,.45)]">
@@ -51,14 +73,12 @@ export function OrderCard({ order }: { order: QueueOrder }) {
           <MessageCircle className="h-4 w-4" />
         </span>
         {flow.next ? (
-          <form action={advanceOrderStatus.bind(null, order.id)} className="flex-1">
-            <button
-              type="submit"
-              className="flex min-h-10 w-full items-center justify-center gap-2 rounded-[11px] bg-charcoal text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover active:scale-[0.985]"
-            >
-              {NextIcon ? <NextIcon className="h-[15px] w-[15px]" /> : null}
-              {flow.nextLabel}
-            </button>
+          <form action={handleAdvance} className="flex-1">
+            <AdvanceStatusButton
+              label={flow.nextLabel!}
+              icon={NextIcon ? <NextIcon className="h-[15px] w-[15px]" /> : null}
+              className="flex min-h-10 w-full items-center justify-center gap-2 rounded-[11px] bg-charcoal text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover active:scale-[0.985] disabled:opacity-60"
+            />
           </form>
         ) : null}
       </div>

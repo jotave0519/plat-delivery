@@ -196,6 +196,7 @@ model Order {
 
   @@index([restaurantId])
   @@index([restaurantId, status])
+  @@index([restaurantId, createdAt])
   @@unique([restaurantId, number])
 }
 

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 
 import { recordMovement } from "@/server/actions/estoque";
+import { useToast } from "@/components/ui/toast";
 
 const inputClass =
   "rounded-[9px] border border-border-strong bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none transition-colors placeholder:text-faint focus:border-accent";
@@ -14,6 +15,7 @@ export function MovementForm({ stockItemId, unit }: { stockItemId: string; unit:
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,8 +29,10 @@ export function MovementForm({ stockItemId, unit }: { stockItemId: string; unit:
       const result = await recordMovement({ stockItemId, type, quantity: qty, reason: reason || undefined });
       if (result?.error) {
         setError(result.error);
+        toast.error(result.error);
         return;
       }
+      toast.success(type === "ENTRADA" ? "Entrada registrada." : "Saída registrada.");
       setQuantity("");
       setReason("");
     });

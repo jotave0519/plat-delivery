@@ -50,6 +50,7 @@
   --animate-grow-up: growUp 0.5s cubic-bezier(0.2, 0.75, 0.2, 1) both;
   --animate-breathe: breathe 2s ease-in-out infinite;
   --animate-unfold: unfold 0.22s ease both;
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
 }
 
 @keyframes riseIn {
@@ -87,6 +88,15 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
   }
 }
 

@@ -1,4 +1,8 @@
+"use client";
+
+import { useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 
 import { FLOW } from "@/lib/order-flow";
@@ -35,14 +39,22 @@ function buildHref(base: { status: string; period: string; q?: string }, overrid
 
 export function OrdersFilterBar({ status, period, q }: { status: OrderStatus | "TODOS"; period: string; q: string }) {
   const base = { status, period, q };
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    // Client-side navigation instead of a full browser GET — matches the
+    // status/period tabs below, which already use <Link>.
+    e.preventDefault();
+    router.push(buildHref(base, { q: inputRef.current?.value ?? "" }));
+  }
 
   return (
     <div className="flex flex-col gap-3">
-      <form action="/pedidos" method="GET" className="flex items-center gap-2 rounded-[11px] border border-border-strong bg-surface px-3.5 py-2.5">
-        {status !== "TODOS" ? <input type="hidden" name="status" value={status} /> : null}
-        {period !== "hoje" ? <input type="hidden" name="period" value={period} /> : null}
+      <form onSubmit={handleSubmit} className="flex items-center gap-2 rounded-[11px] border border-border-strong bg-surface px-3.5 py-2.5">
         <Search className="h-[15px] w-[15px] flex-none text-faint" />
         <input
+          ref={inputRef}
           type="text"
           name="q"
           defaultValue={q}

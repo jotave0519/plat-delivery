@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { saveStockItem } from "@/server/actions/estoque";
+import { useToast } from "@/components/ui/toast";
 
 const inputClass =
   "rounded-[11px] border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-accent";
@@ -24,6 +25,7 @@ export function StockItemForm({
   const [quantityOnHand, setQuantityOnHand] = useState(initial ? "" : "0");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,8 +45,10 @@ export function StockItemForm({
       });
       if (result?.error) {
         setError(result.error);
+        toast.error(result.error);
         return;
       }
+      toast.success(initial ? "Item de estoque atualizado." : "Item de estoque criado.");
       if (onDone && result?.id) {
         onDone(result.id);
       } else {

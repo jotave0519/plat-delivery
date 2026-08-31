@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { NAV_ITEMS } from "@/lib/nav";
+import { NavLinkContent } from "@/components/layout/nav-link-content";
 
 export function MobileNav() {
   const pathname = usePathname();
@@ -17,12 +18,14 @@ export function MobileNav() {
           <Link
             key={item.href}
             href={item.href}
-            className={`flex flex-none flex-col items-center gap-1 rounded-[14px] px-3.5 py-1.5 text-center transition-colors ${
+            className={`flex-none rounded-[14px] px-3.5 py-1.5 text-center transition-colors ${
               active ? "bg-accent-bg text-accent-hover" : "text-faint"
             }`}
           >
-            <Icon className="h-[18px] w-[18px]" />
-            <span className="whitespace-nowrap text-[10.5px] font-medium">{item.label}</span>
+            <NavLinkContent className="flex flex-col items-center gap-1">
+              <Icon className="h-[18px] w-[18px]" />
+              <span className="whitespace-nowrap text-[10.5px] font-medium">{item.label}</span>
+            </NavLinkContent>
           </Link>
         );
       })}

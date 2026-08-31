@@ -1,4 +1,6 @@
-import Link from "next/link";
+"use client";
+
+import { useState } from "react";
 import { CircleCheck } from "lucide-react";
 
 import { FLOW, TONE_CLASSES } from "@/lib/order-flow";
@@ -9,14 +11,18 @@ import type { OrderStatus } from "@/generated/prisma";
 export function PipelineBoard({
   pipeline,
   queue,
-  activeStage,
-  period,
+  activeStage: initialStage,
 }: {
   pipeline: DashboardData["pipeline"];
   queue: DashboardData["queue"];
   activeStage: OrderStatus;
-  period: string;
 }) {
+  // All stages' orders are already in `queue` — switching the active stage
+  // is a pure client-side filter, so it's local state instead of a
+  // server round-trip via `<Link href="?stage=...">`. `initialStage` still
+  // respects a deep link (e.g. from an alert linking straight to a stage)
+  // on first render; the URL just doesn't stay in sync with further clicks.
+  const [activeStage, setActiveStage] = useState(initialStage);
   const openCount = pipeline.reduce((sum, s) => sum + s.count, 0);
   const lateCount = pipeline.reduce((sum, s) => sum + s.lateCount, 0);
   const visible = queue.filter((o) => o.status === activeStage);
@@ -37,10 +43,11 @@ export function PipelineBoard({
           const Icon = flow.icon;
           const tone = TONE_CLASSES[flow.tone];
           return (
-            <Link
+            <button
               key={stage.status}
-              href={`/dashboard?period=${period}&stage=${stage.status}`}
-              className={`flex min-w-[132px] flex-none flex-col gap-2 rounded-[15px] border px-3.5 py-3 transition-transform hover:-translate-y-0.5 ${
+              type="button"
+              onClick={() => setActiveStage(stage.status)}
+              className={`flex min-w-[132px] flex-none flex-col gap-2 rounded-[15px] border px-3.5 py-3 text-left transition-transform hover:-translate-y-0.5 active:scale-[0.98] ${
                 active ? "border-charcoal bg-charcoal" : "border-[#EDEFF3] bg-[#FBFCFD]"
               }`}
             >
@@ -52,12 +59,12 @@ export function PipelineBoard({
                 <span className={`text-[24px] font-semibold tracking-tight ${active ? "text-white" : "text-ink"}`}>{stage.count}</span>
                 {stage.lateCount ? <span className="text-[11.5px] font-medium text-crit">{stage.lateCount} atrasado</span> : null}
               </span>
-            </Link>
+            </button>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 gap-3.5 p-5 sm:grid-cols-2 xl:grid-cols-3">
+      <div key={activeStage} className="grid animate-rise-in grid-cols-1 gap-3.5 p-5 sm:grid-cols-2 xl:grid-cols-3">
         {visible.map((order) => (
           <OrderCard key={order.id} order={order} />
         ))}

@@ -33,7 +33,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
       <div className="flex flex-col gap-[18px] px-[clamp(18px,2.4vw,34px)] pt-1 pb-11">
         <KpiSection kpi={data.kpi} periodLabel={PERIOD_LABELS[period]} />
         <AlertsBanner alerts={data.alerts} />
-        <PipelineBoard pipeline={data.pipeline} queue={data.queue} activeStage={activeStage} period={period} />
+        <PipelineBoard pipeline={data.pipeline} queue={data.queue} activeStage={activeStage} />
         <AnalyticsPanel analytics={data.analytics} periodLabel={PERIOD_LABELS[period]} />
       </div>
     </div>

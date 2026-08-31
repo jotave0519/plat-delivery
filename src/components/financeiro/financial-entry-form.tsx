@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import { saveFinancialEntry } from "@/server/actions/financeiro";
 import type { FinancialEntryItem } from "@/server/queries/financeiro";
+import { useToast } from "@/components/ui/toast";
 
 const inputClass =
   "rounded-[10px] border border-border-strong bg-surface px-3 py-2 text-[13px] text-ink outline-none transition-colors placeholder:text-faint focus:border-accent";
@@ -28,6 +29,7 @@ export function FinancialEntryForm({
   const [date, setDate] = useState(initial ? toDateInputValue(initial.date) : toDateInputValue(new Date()));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,8 +49,10 @@ export function FinancialEntryForm({
       });
       if (result?.error) {
         setError(result.error);
+        toast.error(result.error);
         return;
       }
+      toast.success(initial ? "Lançamento atualizado." : "Lançamento adicionado.");
       if (!initial) {
         setCategory("");
         setAmount("");

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import { saveOpeningHours } from "@/server/actions/configuracoes";
 import { WEEKDAYS, type OpeningHours, type Weekday } from "@/lib/opening-hours";
+import { useToast } from "@/components/ui/toast";
 
 const DAY_LABELS: Record<Weekday, string> = {
   seg: "Segunda",
@@ -19,6 +20,7 @@ export function OpeningHoursForm({ initial }: { initial: OpeningHours }) {
   const [hours, setHours] = useState<OpeningHours>(initial);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   function updateDay(day: Weekday, patch: Partial<OpeningHours[Weekday]>) {
     setSaved(false);
@@ -28,8 +30,13 @@ export function OpeningHoursForm({ initial }: { initial: OpeningHours }) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
-      await saveOpeningHours(hours);
+      const result = await saveOpeningHours(hours);
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
       setSaved(true);
+      toast.success("Horário de funcionamento salvo.");
     });
   }
 

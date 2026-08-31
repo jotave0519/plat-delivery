@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getTenant } from "@/lib/tenant";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { ToastProvider } from "@/components/ui/toast";
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER: "Proprietário(a)",
@@ -26,15 +27,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const lowStock = stockLevels.filter((s) => s.quantityOnHand.lte(s.minQuantity)).length;
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar
-        restaurantName={restaurant.name}
-        userName={tenant.name}
-        userRoleLabel={ROLE_LABELS[tenant.role] ?? tenant.role}
-        badges={{ "/pedidos": openOrders, "/estoque": lowStock || undefined }}
-      />
-      <main className="min-w-0 flex-1 pb-20 md:pb-0">{children}</main>
-      <MobileNav />
-    </div>
+    <ToastProvider>
+      <div className="flex min-h-screen">
+        <Sidebar
+          restaurantName={restaurant.name}
+          userName={tenant.name}
+          userRoleLabel={ROLE_LABELS[tenant.role] ?? tenant.role}
+          badges={{ "/pedidos": openOrders, "/estoque": lowStock || undefined }}
+        />
+        <main className="min-w-0 flex-1 pb-20 md:pb-0">{children}</main>
+        <MobileNav />
+      </div>
+    </ToastProvider>
   );
 }

@@ -3,6 +3,8 @@
 import { useTransition, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
+import { useToast } from "@/components/ui/toast";
+
 type ActionResult = { error?: string } | void | undefined;
 
 /**
@@ -23,6 +25,7 @@ export function ConfirmButton({
   icon,
   className,
   disabled,
+  title,
 }: {
   action: () => Promise<ActionResult> | ActionResult;
   confirmMessage: string;
@@ -30,14 +33,17 @@ export function ConfirmButton({
   icon?: ReactNode;
   className?: string;
   disabled?: boolean;
+  /** Overrides the tooltip shown (defaults to `label`) — useful for icon-only buttons that need to explain a disabled state. */
+  title?: string;
 }) {
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
 
   function handleClick() {
     if (!confirm(confirmMessage)) return;
     startTransition(async () => {
       const result = await action();
-      if (result?.error) alert(result.error);
+      if (result?.error) toast.error(result.error);
     });
   }
 
@@ -47,7 +53,7 @@ export function ConfirmButton({
       onClick={handleClick}
       disabled={disabled || pending}
       className={className}
-      title={label}
+      title={title ?? label}
     >
       {pending ? <Loader2 className="h-[14px] w-[14px] animate-spin" /> : icon}
       {label ? <span>{label}</span> : null}
