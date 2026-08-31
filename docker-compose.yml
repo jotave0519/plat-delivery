@@ -1,0 +1,19 @@
+# Postgres local — opcional, só para quem preferir não usar um projeto/branch
+# Supabase durante o desenvolvimento. NÃO é usado em produção (produção usa
+# o Supabase Postgres configurado via DATABASE_URL/DIRECT_URL) e não é
+# referenciado pelo Dockerfile de deploy.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: plat_delivery
+      POSTGRES_PASSWORD: plat_delivery
+      POSTGRES_DB: plat_delivery
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:

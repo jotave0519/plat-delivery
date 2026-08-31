@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens extracted from the Claude Design dashboard prototype.
+ * Single fixed light theme — the product is not designed with a dark mode.
+ */
+@theme {
+  --font-sans: var(--font-instrument-sans), system-ui, sans-serif;
+
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+
+  --color-ink: #1a1d23;
+  --color-charcoal: #14161b;
+  --color-muted: #5a6070;
+  --color-faint: #8a90a0;
+
+  --color-accent: #0f9aa5;
+  --color-accent-hover: #0b7c85;
+  --color-accent-light: #4fc3ce;
+  --color-accent-bg: #e6f5f6;
+
+  --color-warn: #c4820b;
+  --color-warn-fg: #8a6512;
+  --color-warn-bg: #fdf4e3;
+
+  --color-crit: #c64330;
+  --color-crit-hover: #a93524;
+  --color-crit-fg: #8e2e1e;
+  --color-crit-bg: #fbedea;
+  --color-crit-bg-soft: #fdf2ef;
+
+  --color-ok: #2e8b62;
+  --color-ok-fg: #256b4c;
+  --color-ok-bg: #e9f5ef;
+
+  --color-info: #6b5bd6;
+  --color-info-fg: #4a3ea8;
+  --color-info-bg: #eeedfb;
+
+  --color-neutral-fg: #3d4351;
+  --color-neutral-icon: #5a6070;
+  --color-neutral-bg: #f1f3f6;
+
+  --color-border: #eef0f4;
+  --color-border-strong: #e7e9ee;
+  --color-border-soft: #f1f3f6;
+
+  --animate-rise-in: riseIn 0.3s ease both;
+  --animate-grow-up: growUp 0.5s cubic-bezier(0.2, 0.75, 0.2, 1) both;
+  --animate-breathe: breathe 2s ease-in-out infinite;
+  --animate-unfold: unfold 0.22s ease both;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes growUp {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

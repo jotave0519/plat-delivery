@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Tenancy & identity ----------
+
+model Restaurant {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  phone         String?
+  address       String?
+  timezone      String   @default("America/Sao_Paulo")
+  pixKey        String?
+  openingHours  Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users          User[]
+  customers      Customer[]
+  categories     Category[]
+  products       Product[]
+  orders         Order[]
+  stockItems     StockItem[]
+  financialEntries FinancialEntry[]
+  whatsappConnection WhatsappConnection?
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  ATTENDANT
+  KITCHEN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  restaurantId String
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(ATTENDANT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+}
+
+// ---------- Customers ----------
+
+model Customer {
+  id           String   @id @default(cuid())
+  restaurantId String
+  name         String
+  phone        String
+  address      String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orders     Order[]
+
+  @@index([restaurantId])
+  @@unique([restaurantId, phone])
+}
+
+// ---------- Menu ----------
+
+model Category {
+  id           String @id @default(cuid())
+  restaurantId String
+  name         String
+  position     Int    @default(0)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  products   Product[]
+
+  @@index([restaurantId])
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  restaurantId String
+  categoryId   String
+  name         String
+  description  String?
+  price        Decimal  @db.Decimal(10, 2)
+  imageUrl     String?
+  isAvailable  Boolean  @default(true)
+  position     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category     Category      @relation(fields: [categoryId], references: [id])
+  optionGroups OptionGroup[]
+  orderItems   OrderItem[]
+
+  @@index([restaurantId])
+  @@index([categoryId])
+}
+
+model OptionGroup {
+  id        String  @id @default(cuid())
+  productId String
+  name      String
+  required  Boolean @default(false)
+  multiple  Boolean @default(false)
+
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  items   OptionItem[]
+
+  @@index([productId])
+}
+
+model OptionItem {
+  id      String  @id @default(cuid())
+  groupId String
+  name    String
+  price   Decimal @db.Decimal(10, 2) @default(0)
+
+  group             OptionGroup        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  orderItemOptions  OrderItemOption[]
+
+  @@index([groupId])
+}
+
+// ---------- Orders ----------
+
+enum OrderStatus {
+  NOVO
+  AGUARDANDO_PAGAMENTO
+  CONFIRMADO
+  EM_PREPARO
+  PRONTO
+  EM_ENTREGA
+  CONCLUIDO
+  CANCELADO
+}
+
+enum OrderChannel {
+  CARDAPIO_PROPRIO
+  MARKETPLACE
+  WHATSAPP_IA
+  TELEFONE
+  BALCAO
+}
+
+enum Fulfillment {
+  DELIVERY
+  RETIRADA
+}
+
+enum PaymentMethod {
+  PIX
+  CARTAO
+  DINHEIRO
+  VALE_REFEICAO
+}
+
+enum PaymentStatus {
+  PENDENTE
+  PAGO
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  restaurantId  String
+  customerId    String?
+  number        Int
+  status        OrderStatus   @default(NOVO)
+  channel       OrderChannel
+  fulfillment   Fulfillment
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDENTE)
+  address       String?
+  notes         String?
+  subtotal      Decimal       @db.Decimal(10, 2)
+  deliveryFee   Decimal       @db.Decimal(10, 2) @default(0)
+  total         Decimal       @db.Decimal(10, 2)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  restaurant Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  customer   Customer?    @relation(fields: [customerId], references: [id])
+  items      OrderItem[]
+  events     OrderEvent[]
+
+  @@index([restaurantId])
+  @@index([restaurantId, status])
+  @@unique([restaurantId, number])
+}
+
+/// One row per status transition. Lets us compute real operational metrics
+/// (time in preparo, time in entrega, % above the promised time) instead of
+/// hardcoding them — recorded automatically whenever an order's status
+/// changes (see src/server/actions/orders.ts).
+model OrderEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  notes     String?
+
+  order   Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product            @relation(fields: [productId], references: [id])
+  options OrderItemOption[]
+
+  @@index([orderId])
+}
+
+model OrderItemOption {
+  id          String  @id @default(cuid())
+  orderItemId String
+  optionItemId String
+  price       Decimal @db.Decimal(10, 2)
+
+  orderItem  OrderItem  @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  optionItem OptionItem @relation(fields: [optionItemId], references: [id])
+
+  @@index([orderItemId])
+}
+
+// ---------- Stock ----------
+
+enum StockMovementType {
+  ENTRADA
+  SAIDA
+}
+
+model StockItem {
+  id            String   @id @default(cuid())
+  restaurantId  String
+  name          String
+  unit          String
+  quantityOnHand Decimal @db.Decimal(10, 2) @default(0)
+  minQuantity   Decimal  @db.Decimal(10, 2) @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  restaurant Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  movements  StockMovement[]
+
+  @@index([restaurantId])
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  stockItemId String
+  type        StockMovementType
+  quantity    Decimal           @db.Decimal(10, 2)
+  reason      String?
+  createdAt   DateTime          @default(now())
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@index([stockItemId])
+}
+
+// ---------- Financial ----------
+
+enum FinancialEntryType {
+  RECEITA
+  DESPESA
+}
+
+model FinancialEntry {
+  id           String             @id @default(cuid())
+  restaurantId String
+  type         FinancialEntryType
+  category     String
+  amount       Decimal            @db.Decimal(10, 2)
+  description  String?
+  date         DateTime
+  createdAt    DateTime           @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([restaurantId, date])
+}
+
+// ---------- WhatsApp (Evolution API) ----------
+//
+// Foundation only — no agent/UI wired up yet (see
+// src/server/integrations/evolution/ and
+// src/app/api/webhooks/evolution/[token]/route.ts). Each restaurant maps to
+// exactly one Evolution API instance, identified by `instanceName`; inbound
+// webhooks resolve the restaurant through that mapping, which is how the
+// integration stays isolated per tenant.
+
+enum WhatsappConnectionStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
+model WhatsappConnection {
+  id           String                   @id @default(cuid())
+  restaurantId String                   @unique
+  instanceName String                   @unique
+  status       WhatsappConnectionStatus @default(DISCONNECTED)
+  qrCode       String? // cached base64 QR while status = CONNECTING
+  phoneNumber  String?
+  lastEventAt  DateTime?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+/// Raw log of inbound Evolution API webhook calls. restaurantId/instanceName
+/// are nullable because an event for an unrecognized instance is still
+/// recorded (for debugging) rather than dropped silently.
+model WhatsappWebhookEvent {
+  id           String   @id @default(cuid())
+  restaurantId String?
+  instanceName String?
+  eventType    String
+  payload      Json
+  createdAt    DateTime @default(now())
+
+  @@index([restaurantId])
+  @@index([createdAt])
+}
