@@ -32,8 +32,9 @@ por que existem duas URLs de banco) estão comentados no próprio arquivo.
 | `EVOLUTION_API_KEY` | não* | API key admin da Evolution API |
 | `EVOLUTION_WEBHOOK_SECRET` | não* | Segredo próprio para validar o webhook em `/api/webhooks/evolution/[token]` |
 | `APP_URL` | não* | URL pública deste app (sem barra final) — usada para montar a webhook URL passada à Evolution API ao conectar um WhatsApp |
+| `ANTHROPIC_API_KEY` | não** | Chave da API da Claude — usada só pela importação de cardápio (`/cardapio/importar`) |
 
-Sem as três primeiras a app não inicia (`src/lib/env.ts` falha rápido e explica o que falta). \*As quatro variáveis de WhatsApp são opcionais para a app subir, mas **obrigatórias** para o botão "Conectar WhatsApp" em `/atendimento-ia` funcionar — sem `APP_URL` configurada, ele mostra um erro amigável em vez de cadastrar um webhook que a Evolution API não conseguiria alcançar.
+Sem as três primeiras a app não inicia (`src/lib/env.ts` falha rápido e explica o que falta). \*As quatro variáveis de WhatsApp são opcionais para a app subir, mas **obrigatórias** para o botão "Conectar WhatsApp" em `/atendimento-ia` funcionar — sem `APP_URL` configurada, ele mostra um erro amigável em vez de cadastrar um webhook que a Evolution API não conseguiria alcançar. \*\*Sem `ANTHROPIC_API_KEY`, o app sobe normalmente — só o botão "Importar cardápio" mostra um erro amigável em vez de funcionar.
 
 ## Banco de dados — Supabase (padrão) ou Postgres local (opcional)
 
@@ -175,6 +176,7 @@ src/app/(app)/...                   shell autenticado: sidebar, pedidos, cardáp
 src/app/api/health                  health check (EasyPanel)
 src/app/api/webhooks/evolution      webhook da Evolution API
 src/server/integrations/evolution   cliente HTTP da Evolution API
+src/server/integrations/anthropic   chamada à API da Claude p/ importação de cardápio (extração estruturada)
 src/components/atendimento          componentes do módulo Atendimento IA (cartão de conexão do WhatsApp)
 src/components/dashboard            componentes do Dashboard
 src/components/pedidos              componentes do módulo de Pedidos (lista, detalhe, criação manual)
@@ -210,6 +212,14 @@ src/server/queries                   consultas de leitura (dashboard, pedidos, c
   excluir se vazia), produtos (criar/editar/pausar/excluir) e adicionais
   (grupos e itens) — protegido contra excluir algo já usado em um pedido
   real (a UI trava a remoção, a Server Action reforça a mesma regra)
+- **Importação de cardápio por IA** (`/cardapio/importar`): envia um PDF ou
+  foto do cardápio, a API da Claude (visão/documento, saída estruturada)
+  identifica categorias e produtos sem inventar dado que não esteja no
+  arquivo, o usuário revisa/edita/desmarca tudo numa tela própria antes de
+  qualquer gravação, com aviso de possível duplicata (comparação por nome,
+  sem biblioteca externa) e reaproveitamento de categoria já existente por
+  nome — só cria o que for confirmado, nunca altera/apaga o que já existia.
+  Exige `ANTHROPIC_API_KEY` configurada; sem ela, mostra erro amigável.
 - **Clientes completo e funcional**: lista com estatísticas reais (pedidos,
   valor gasto, último pedido — cancelados não contam), busca, cadastro e
   edição inline, histórico de pedidos no detalhe, exclusão bloqueada para

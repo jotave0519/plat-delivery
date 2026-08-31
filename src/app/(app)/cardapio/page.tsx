@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 
 import { getTenant } from "@/lib/tenant";
 import { listCategoriesWithProducts } from "@/server/queries/cardapio";
@@ -18,8 +18,15 @@ export default async function CardapioPage() {
           <p className="text-[13px] text-faint">Categorias, produtos e adicionais do seu cardápio.</p>
         </div>
         <Link
+          href="/cardapio/importar"
+          className="ml-auto flex items-center gap-2 rounded-[10px] border border-border-strong px-3.5 py-2 text-[12.5px] font-medium text-muted transition-colors hover:border-accent hover:text-accent-hover"
+        >
+          <Upload className="h-[15px] w-[15px]" />
+          Importar cardápio
+        </Link>
+        <Link
           href="/cardapio/produtos/novo"
-          className="ml-auto flex items-center gap-2 rounded-[11px] bg-charcoal px-4 py-[11px] text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover active:scale-[0.98]"
+          className="flex items-center gap-2 rounded-[11px] bg-charcoal px-4 py-[11px] text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover active:scale-[0.98]"
         >
           <Plus className="h-4 w-4" />
           Novo produto
