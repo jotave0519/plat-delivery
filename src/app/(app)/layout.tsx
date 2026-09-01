@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getTenant } from "@/lib/tenant";
+import { countNewFeedbacks } from "@/server/queries/feedbacks";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { ToastProvider } from "@/components/ui/toast";
@@ -14,13 +15,14 @@ const ROLE_LABELS: Record<string, string> = {
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const tenant = await getTenant();
 
-  const [restaurant, openOrders, stockLevels] = await Promise.all([
+  const [restaurant, openOrders, stockLevels, newFeedbacks] = await Promise.all([
     db.restaurant.findUniqueOrThrow({ where: { id: tenant.restaurantId }, select: { name: true } }),
     db.order.count({ where: { restaurantId: tenant.restaurantId, status: { notIn: ["CONCLUIDO", "CANCELADO"] } } }),
     db.stockItem.findMany({
       where: { restaurantId: tenant.restaurantId },
       select: { quantityOnHand: true, minQuantity: true },
     }),
+    countNewFeedbacks(tenant.restaurantId),
   ]);
   // Prisma can't compare two columns of the same row in a `where` filter,
   // so the low-stock threshold is applied in application code instead.
@@ -33,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           restaurantName={restaurant.name}
           userName={tenant.name}
           userRoleLabel={ROLE_LABELS[tenant.role] ?? tenant.role}
-          badges={{ "/pedidos": openOrders, "/estoque": lowStock || undefined }}
+          badges={{ "/pedidos": openOrders, "/estoque": lowStock || undefined, "/feedbacks": newFeedbacks || undefined }}
         />
         <main className="min-w-0 flex-1 pb-20 md:pb-0">{children}</main>
         <MobileNav />

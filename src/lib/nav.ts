@@ -8,6 +8,7 @@ import {
   TrendingUp,
   Bot,
   Settings,
+  MessageSquareHeart,
 } from "lucide-react";
 
 export type NavItem = {
@@ -24,5 +25,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Estoque", href: "/estoque", icon: Boxes },
   { label: "Financeiro", href: "/financeiro", icon: TrendingUp },
   { label: "Atendimento IA", href: "/atendimento-ia", icon: Bot },
+  { label: "Feedbacks", href: "/feedbacks", icon: MessageSquareHeart },
   { label: "Configurações", href: "/configuracoes", icon: Settings },
 ];

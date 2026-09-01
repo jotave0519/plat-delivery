@@ -47,6 +47,7 @@ model Restaurant {
   financialEntries FinancialEntry[]
   whatsappConnection WhatsappConnection?
   conversations  Conversation[]
+  feedbacks      Feedback[]
 }
 
 enum Role {
@@ -89,6 +90,7 @@ model Customer {
   restaurant    Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orders        Order[]
   conversations Conversation[]
+  feedbacks     Feedback[]
 
   @@index([restaurantId])
   @@unique([restaurantId, phone])
@@ -217,6 +219,7 @@ model Order {
   customer   Customer?    @relation(fields: [customerId], references: [id])
   items      OrderItem[]
   events     OrderEvent[]
+  feedback   Feedback?
 
   @@index([restaurantId])
   @@index([restaurantId, status])
@@ -427,4 +430,53 @@ model Message {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
+}
+
+// ---------- Post-order feedback ----------
+//
+// One Feedback per Order (channel WHATSAPP_IA only, for now — see
+// src/server/actions/orders.ts). Scheduled durably in the database the
+// moment an order reaches CONCLUIDO (dueAt = now + 3h) so the send survives
+// a container restart/deploy; src/instrumentation.ts starts an in-process
+// poller (src/server/feedback/scheduler.ts) that picks up due rows. The
+// customer's reply is captured by src/server/actions/atendimento-ia-conversa.ts
+// before the ordering agent runs, matched by (restaurantId, phoneNumber).
+
+enum FeedbackStatus {
+  PENDING   // scheduled, waiting for dueAt
+  SENDING   // claimed by a poller run (guards against a double-send race)
+  SENT      // sent, waiting for the customer's reply
+  RESPONDED // customer replied
+  FAILED    // a real send error — never retried automatically
+}
+
+model Feedback {
+  id                 String         @id @default(cuid())
+  restaurantId       String
+  orderId            String         @unique
+  customerId         String?
+  /// Copied from Order.customer.phone at creation time — the number the
+  /// feedback request is sent to and the key used to match the reply.
+  phoneNumber        String
+  status             FeedbackStatus @default(PENDING)
+  dueAt              DateTime
+  requestSentAt      DateTime?
+  responseText       String?        @db.Text
+  responseReceivedAt DateTime?
+  /// Best-effort 0-10 rating parsed from the customer's free-text reply
+  /// (src/lib/feedback-rating.ts) — null whenever no number is mentioned,
+  /// which is the common case given the message never explicitly asks for one.
+  rating             Int?
+  /// Set when a staff member opens /feedbacks and views this row.
+  viewedAt           DateTime?
+  /// Set when a staff member manually marks this feedback as handled.
+  resolvedAt         DateTime?
+  createdAt          DateTime       @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+
+  @@index([restaurantId])
+  @@index([status, dueAt])
 }

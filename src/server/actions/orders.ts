@@ -27,17 +27,36 @@ export async function advanceOrderStatus(orderId: string) {
 
   const order = await db.order.findFirst({
     where: { id: orderId, restaurantId: tenant.restaurantId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, channel: true, customerId: true, customer: { select: { phone: true } } },
   });
   if (!order) return;
 
   const next = FLOW[order.status].next;
   if (!next) return;
 
-  await db.$transaction([
-    db.order.update({ where: { id: order.id }, data: { status: next } }),
-    db.orderEvent.create({ data: { orderId: order.id, status: next } }),
-  ]);
+  await db.$transaction(async (tx) => {
+    await tx.order.update({ where: { id: order.id }, data: { status: next } });
+    await tx.orderEvent.create({ data: { orderId: order.id, status: next } });
+
+    // Schedule the post-order feedback request the moment a WhatsApp-agent
+    // order is concluded — durable in the DB (not in-memory) so it survives
+    // a deploy/restart; src/server/feedback/scheduler.ts's poller picks it
+    // up once dueAt passes. upsert (not create) so a hypothetical racing
+    // double-call never fails the whole transaction over a duplicate row.
+    if (next === "CONCLUIDO" && order.channel === "WHATSAPP_IA" && order.customer?.phone) {
+      await tx.feedback.upsert({
+        where: { orderId: order.id },
+        update: {},
+        create: {
+          restaurantId: tenant.restaurantId,
+          orderId: order.id,
+          customerId: order.customerId,
+          phoneNumber: order.customer.phone,
+          dueAt: new Date(Date.now() + 3 * 60 * 60 * 1000),
+        },
+      });
+    }
+  });
 
   revalidateOrderPaths(order.id);
   // Best-effort (the function itself never throws) — awaited so it reliably

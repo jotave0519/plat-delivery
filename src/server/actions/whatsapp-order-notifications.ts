@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { sendTextMessage } from "@/server/integrations/evolution/client";
+import { resolveConnectedInstance } from "@/server/integrations/evolution/connection";
 import type { OrderStatus } from "@/generated/prisma";
 
 /**
@@ -25,11 +26,6 @@ const STATUS_MESSAGES: Partial<Record<OrderStatus, (orderNumber: number) => stri
   EM_ENTREGA: (n) => `Seu pedido #${n} saiu para entrega! 🛵`,
   CONCLUIDO: (n) => `Seu pedido #${n} foi concluído. Obrigado pela preferência! ❤️`,
 };
-
-async function resolveConnectedInstance(restaurantId: string) {
-  const connection = await db.whatsappConnection.findUnique({ where: { restaurantId } });
-  return connection && connection.status === "CONNECTED" ? connection.instanceName : null;
-}
 
 export async function notifyOrderStatusChange(orderId: string) {
   try {

@@ -8,6 +8,7 @@ import { getCatalogForOrderForm, type CatalogCategory } from "@/server/queries/o
 import { priceOrderItems, nextOrderNumber } from "@/server/orders/pricing";
 import { sendTextMessage, sendDocument } from "@/server/integrations/evolution/client";
 import { PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
+import { extractRating } from "@/lib/feedback-rating";
 import {
   runWhatsappAgent,
   type AgentTool,
@@ -205,8 +206,9 @@ REGRAS INEGOCIÁVEIS:
 - Nunca invente produto, preço, disponibilidade, promoção ou informação que não esteja explicitamente no CARDÁPIO ou nas informações abaixo. Se não souber algo, diga que vai verificar com a equipe, e chame a ferramenta transferir_para_humano se o cliente insistir.
 - Preços e disponibilidade vêm sempre do CARDÁPIO abaixo — não calcule nem estime nada por conta própria além de somar o que já está listado.
 - O cliente pode mudar de ideia a qualquer momento (trocar item, quantidade, endereço, forma de pagamento) — use atualizar_pedido de novo, o carrinho novo substitui o anterior.
-- Antes de confirmar_pedido, sempre mostre um resumo completo em texto (itens, quantidades, valores, forma de entrega, endereço se houver, forma de pagamento) e espere confirmação explícita do cliente.
-- Pergunte se o pedido deve usar o número de WhatsApp que está conversando ou outro telefone, e peça o nome do cliente, antes de confirmar.
+- Faça UMA pergunta por mensagem sempre que possível. Só junte duas perguntas na mesma mensagem quando forem sobre o mesmo assunto (ex.: "Prefere Pix ou cartão? Se for cartão, na entrega?" é aceitável — é tudo sobre pagamento). Nunca junte perguntas de assuntos diferentes (ex.: nome, telefone e endereço) numa mensagem só — pergunte cada uma na sua vez, como uma recepcionista faria.
+- Nunca pergunte de novo algo que o cliente já respondeu nesta conversa ou que já esteja em CARRINHO ATUAL DO CLIENTE abaixo (nome, telefone a usar, entrega/retirada, endereço, forma de pagamento) — reaproveite o que já foi dito em vez de repetir a pergunta.
+- Antes de confirmar_pedido você precisa saber, cada um perguntado na sua própria mensagem (pulando o que o cliente já informou): o nome do cliente; se o pedido deve usar este número de WhatsApp ou outro telefone; o endereço, se for entrega; e a forma de pagamento. Só depois de ter tudo isso, mostre um resumo completo em texto (itens, quantidades, valores, forma de entrega, endereço se houver, forma de pagamento) e espere confirmação explícita antes de chamar confirmar_pedido.
 - Se a forma de pagamento escolhida for Pix, informe a chave Pix abaixo e o valor total a pagar — nunca considere o pedido como pago só porque o cliente disse "já paguei" ou enviou um comprovante; isso fica para a equipe conferir depois.
 - Se o cliente pedir para falar com uma pessoa, ou parecer confuso/insatisfeito e você não conseguir ajudar, chame transferir_para_humano.
 - Se pedirem o cardápio em PDF, diga que vai enviar (o sistema cuida do envio do arquivo automaticamente).
@@ -289,7 +291,15 @@ function buildToolHandlers(params: {
       if (!cart.paymentMethod) return { error: "Falta saber a forma de pagamento." };
       if (!cart.customerName?.trim()) return { error: "Falta o nome do cliente." };
 
-      const phone = (cart.phoneToUse?.trim() || phoneNumber).replace(/\D/g, "");
+      // cart.phoneToUse sometimes ends up as a phrase like "este número"
+      // instead of an actual number (the model describing the customer's
+      // answer rather than quoting digits) — stripping non-digits from
+      // that would silently produce an empty phone, breaking every
+      // downstream WhatsApp notification for this order. Only trust it
+      // when it actually contains something phone-shaped; otherwise fall
+      // back to the real WhatsApp number this conversation is happening on.
+      const phoneToUseDigits = cart.phoneToUse?.replace(/\D/g, "") ?? "";
+      const phone = phoneToUseDigits.length >= 8 ? phoneToUseDigits : phoneNumber.replace(/\D/g, "");
 
       const priced = await priceOrderItems(
         restaurantId,
@@ -367,6 +377,49 @@ function buildToolHandlers(params: {
 
 // ---------- entry point ----------
 
+/**
+ * If this phone number has a Feedback request awaiting a reply, treats this
+ * inbound message as that reply instead of an ordering-agent turn: records
+ * the text (and a best-effort rating), sends a short thank-you, and returns
+ * true so the caller skips the rest of the turn. Returns false when there's
+ * no pending feedback for this conversation — the normal flow continues.
+ */
+async function captureFeedbackReply(params: {
+  restaurantId: string;
+  phoneNumber: string;
+  conversationId: string;
+  instanceName: string;
+  text: string;
+}): Promise<boolean> {
+  const { restaurantId, phoneNumber, conversationId, instanceName, text } = params;
+
+  const pending = await db.feedback.findFirst({
+    where: { restaurantId, phoneNumber, status: "SENT" },
+    orderBy: { requestSentAt: "desc" },
+  });
+  if (!pending) return false;
+
+  await db.feedback.update({
+    where: { id: pending.id },
+    data: {
+      status: "RESPONDED",
+      responseText: text,
+      responseReceivedAt: new Date(),
+      rating: extractRating(text),
+    },
+  });
+
+  const thanks = "Muito obrigado pelo retorno! 😊 Isso nos ajuda bastante.";
+  await db.message.create({ data: { conversationId, direction: "OUT", content: thanks } });
+  try {
+    await sendTextMessage(instanceName, phoneNumber, thanks);
+  } catch (err) {
+    console.error("Falha ao enviar agradecimento de feedback:", err);
+  }
+
+  return true;
+}
+
 export async function processConversationMessage(params: {
   restaurantId: string;
   phoneNumber: string;
@@ -398,6 +451,13 @@ export async function processConversationMessage(params: {
       whatsappMessageId: whatsappMessageId ?? undefined,
     },
   });
+
+  // Capture a reply to a pending post-order feedback request, if there is
+  // one — this runs regardless of aiEnabled (collecting feedback isn't the
+  // ordering agent taking over, just recording data) and short-circuits
+  // the rest of this turn: the ordering agent never runs for this message.
+  const handledAsFeedback = await captureFeedbackReply({ restaurantId, phoneNumber, conversationId: conversation.id, instanceName, text });
+  if (handledAsFeedback) return;
 
   if (!conversation.aiEnabled) return; // handed off to a human — the agent stays silent
 
