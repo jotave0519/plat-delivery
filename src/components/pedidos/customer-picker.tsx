@@ -5,8 +5,8 @@ import { Search, UserPlus, X, Loader2 } from "lucide-react";
 
 import { searchCustomers } from "@/server/actions/orders";
 
-export type SelectedCustomer = { id?: string; name: string; phone: string; address?: string | null };
-type CustomerResult = { id: string; name: string; phone: string; address: string | null };
+export type SelectedCustomer = { id?: string; name: string; phone?: string; address?: string | null };
+type CustomerResult = { id: string; name: string; phone: string | null; address: string | null };
 
 const inputClass =
   "rounded-[11px] border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-accent";
@@ -52,7 +52,7 @@ export function CustomerPicker({
       <div className="flex items-start gap-3 rounded-[13px] border border-border-strong bg-surface px-3.5 py-3">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[14px] font-medium">{value.name}</span>
-          <span className="text-[12.5px] text-faint">{value.phone}</span>
+          {value.phone ? <span className="text-[12.5px] text-faint">{value.phone}</span> : null}
         </div>
         <button
           type="button"
@@ -83,14 +83,14 @@ export function CustomerPicker({
         />
         <input
           className={inputClass}
-          placeholder="Telefone (com DDD)"
+          placeholder="Telefone (opcional)"
           value={newPhone}
           onChange={(e) => setNewPhone(e.target.value)}
         />
         <button
           type="button"
-          disabled={!newName.trim() || newPhone.trim().length < 8}
-          onClick={() => onChange({ name: newName.trim(), phone: newPhone.trim() })}
+          disabled={!newName.trim()}
+          onClick={() => onChange({ name: newName.trim(), phone: newPhone.trim() || undefined })}
           className="mt-1 flex min-h-[38px] items-center justify-center rounded-[10px] bg-charcoal text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
         >
           Usar este cliente
@@ -118,11 +118,11 @@ export function CustomerPicker({
             <button
               key={c.id}
               type="button"
-              onClick={() => onChange({ id: c.id, name: c.name, phone: c.phone, address: c.address })}
+              onClick={() => onChange({ id: c.id, name: c.name, phone: c.phone ?? undefined, address: c.address })}
               className="flex flex-col items-start gap-0.5 rounded-[9px] px-2.5 py-2 text-left transition-colors hover:bg-neutral-bg"
             >
               <span className="text-[13.5px] font-medium">{c.name}</span>
-              <span className="text-[12px] text-faint">{c.phone}</span>
+              {c.phone ? <span className="text-[12px] text-faint">{c.phone}</span> : null}
             </button>
           ))}
         </div>

@@ -29,7 +29,10 @@ export const FLOW: Record<OrderStatus, FlowStep> = {
     label: "Novos",
     chip: "Novo",
     icon: BellRing,
-    next: "CONFIRMADO",
+    // Confirming a new order jumps straight to preparation — no separate
+    // "iniciar preparo" click. See CONFIRMADO below for why that status
+    // (and its own `next`) still exists in this table.
+    next: "EM_PREPARO",
     nextLabel: "Confirmar",
     nextIcon: CircleCheck,
     tone: "accent",
@@ -38,11 +41,17 @@ export const FLOW: Record<OrderStatus, FlowStep> = {
     label: "Aguardando pgto",
     chip: "Aguardando pgto",
     icon: Hourglass,
-    next: "CONFIRMADO",
+    next: "EM_PREPARO",
     nextLabel: "Registrar pagamento",
     nextIcon: CircleCheck,
     tone: "warn",
   },
+  // No order is ever advanced *into* CONFIRMADO anymore (NOVO/
+  // AGUARDANDO_PAGAMENTO now go straight to EM_PREPARO above), but the
+  // entry stays — it's the only thing that (a) renders correctly if an
+  // OrderEvent with this status already exists from before this change,
+  // and (b) gives a "next" button to any order that somehow is still
+  // sitting at CONFIRMADO, so it's never stranded with no way forward.
   CONFIRMADO: {
     label: "Confirmados",
     chip: "Confirmado",
@@ -57,7 +66,7 @@ export const FLOW: Record<OrderStatus, FlowStep> = {
     chip: "Em preparo",
     icon: Flame,
     next: "PRONTO",
-    nextLabel: "Marcar pronto",
+    nextLabel: "Marcar como pronto",
     nextIcon: PackageCheck,
     tone: "neutral",
   },
@@ -66,7 +75,7 @@ export const FLOW: Record<OrderStatus, FlowStep> = {
     chip: "Pronto",
     icon: PackageCheck,
     next: "EM_ENTREGA",
-    nextLabel: "Despachar",
+    nextLabel: "Enviar para entrega",
     nextIcon: Bike,
     tone: "ok",
   },
@@ -75,7 +84,7 @@ export const FLOW: Record<OrderStatus, FlowStep> = {
     chip: "Saiu p/ entrega",
     icon: Bike,
     next: "CONCLUIDO",
-    nextLabel: "Confirmar entrega",
+    nextLabel: "Concluir pedido",
     nextIcon: CheckCheck,
     tone: "info",
   },
@@ -99,15 +108,14 @@ export const FLOW: Record<OrderStatus, FlowStep> = {
   },
 };
 
-/** Open statuses shown as pipeline columns on the dashboard, in flow order. */
-export const PIPELINE_STAGES: OrderStatus[] = [
-  "NOVO",
-  "AGUARDANDO_PAGAMENTO",
-  "CONFIRMADO",
-  "EM_PREPARO",
-  "PRONTO",
-  "EM_ENTREGA",
-];
+/**
+ * Open statuses shown as pipeline columns on the dashboard, in flow order.
+ * CONFIRMADO is deliberately not a column here — no order rests there
+ * anymore (see FLOW above), but it's still a valid status: an order stuck
+ * there from before this change is fully visible/manageable via
+ * /pedidos?status=CONFIRMADO, just not as a dashboard tab.
+ */
+export const PIPELINE_STAGES: OrderStatus[] = ["NOVO", "AGUARDANDO_PAGAMENTO", "EM_PREPARO", "PRONTO", "EM_ENTREGA"];
 
 export const TONE_CLASSES: Record<Tone, { bg: string; fg: string; icon: string }> = {
   accent: { bg: "bg-accent-bg", fg: "text-accent-hover", icon: "text-accent" },

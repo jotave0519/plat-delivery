@@ -92,7 +92,7 @@ export default async function OrderDetailPage(props: PageProps<"/pedidos/[id]">)
             <h2 className="text-[15px] font-semibold tracking-tight">Cliente</h2>
             <div className="flex flex-col gap-1.5">
               <span className="text-[14px] font-medium">{order.customer?.name ?? "Cliente balcão"}</span>
-              {order.customer ? (
+              {order.customer?.phone ? (
                 <span className="flex items-center gap-1.5 text-[13px] text-faint">
                   <Phone className="h-[13px] w-[13px]" />
                   {order.customer.phone}

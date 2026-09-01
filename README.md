@@ -207,7 +207,11 @@ src/server/queries                   consultas de leitura (dashboard, pedidos, c
 - **Pedidos completo e funcional**: lista com filtros (status/período/busca)
   e paginação, detalhe do pedido com linha do tempo real (`OrderEvent`),
   avançar/cancelar status, e criação manual (cliente novo ou existente,
-  itens do cardápio com adicionais, entrega/retirada, pagamento)
+  itens do cardápio com adicionais, entrega/retirada, pagamento). Fluxo
+  operacional simplificado: confirmar um pedido novo já leva direto pra
+  "Em preparo" (sem um clique extra de "Iniciar preparo") — `CONFIRMADO`
+  continua existindo no enum/schema só como rede de segurança para um
+  pedido que eventualmente já esteja parado nesse status.
 - **Cardápio completo e funcional**: categorias (criar, renomear, reordenar,
   excluir se vazia), produtos (criar/editar/pausar/excluir) e adicionais
   (grupos e itens) — protegido contra excluir algo já usado em um pedido
@@ -223,7 +227,9 @@ src/server/queries                   consultas de leitura (dashboard, pedidos, c
 - **Clientes completo e funcional**: lista com estatísticas reais (pedidos,
   valor gasto, último pedido — cancelados não contam), busca, cadastro e
   edição inline, histórico de pedidos no detalhe, exclusão bloqueada para
-  quem já tem pedidos
+  quem já tem pedidos. Telefone é opcional (nome é o único campo
+  obrigatório) — cobre o cliente de balcão cadastrado só com o nome, tanto
+  na tela de Clientes quanto no fluxo de "Novo pedido".
 - **Estoque completo e funcional**: itens ordenados por severidade
   (esgotado/baixo primeiro), registro de entrada/saída com histórico
   auditável (a quantidade só muda por movimentação, nunca por edição

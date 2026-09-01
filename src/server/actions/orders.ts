@@ -79,7 +79,7 @@ export async function searchCustomers(query: string) {
 const createManualOrderSchema = z.object({
   customer: z.union([
     z.object({ id: z.string().min(1) }),
-    z.object({ name: z.string().min(1), phone: z.string().min(8) }),
+    z.object({ name: z.string().min(1), phone: z.string().optional() }),
   ]),
   channel: z.enum(["TELEFONE", "BALCAO"]),
   fulfillment: z.enum(["DELIVERY", "RETIRADA"]),
@@ -128,11 +128,20 @@ export async function createManualOrder(input: CreateManualOrderInput) {
     if (!existing) return { error: "Cliente não encontrado." };
     customerId = existing.id;
   } else {
-    const customer = await db.customer.upsert({
-      where: { restaurantId_phone: { restaurantId: tenant.restaurantId, phone: data.customer.phone } },
-      update: { name: data.customer.name },
-      create: { restaurantId: tenant.restaurantId, name: data.customer.name, phone: data.customer.phone },
-    });
+    const phone = data.customer.phone?.trim() || null;
+    // Dedup by phone only when one was actually given — there's no natural
+    // key to upsert on for a name-only walk-in customer, so that case is
+    // always a fresh create (the user can merge duplicates later via
+    // Clientes if needed).
+    const customer = phone
+      ? await db.customer.upsert({
+          where: { restaurantId_phone: { restaurantId: tenant.restaurantId, phone } },
+          update: { name: data.customer.name },
+          create: { restaurantId: tenant.restaurantId, name: data.customer.name, phone },
+        })
+      : await db.customer.create({
+          data: { restaurantId: tenant.restaurantId, name: data.customer.name, phone: null },
+        });
     customerId = customer.id;
   }
 

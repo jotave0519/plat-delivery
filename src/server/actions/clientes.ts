@@ -11,7 +11,7 @@ import { Prisma } from "@/generated/prisma";
 const customerSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, "Nome é obrigatório"),
-  phone: z.string().min(8, "Telefone inválido"),
+  phone: z.string().optional(),
   address: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -26,7 +26,7 @@ export async function saveCustomer(input: SaveCustomerInput) {
 
   const customerData = {
     name: data.name.trim(),
-    phone: data.phone.trim(),
+    phone: data.phone?.trim() || null,
     address: data.address?.trim() || null,
     notes: data.notes?.trim() || null,
   };

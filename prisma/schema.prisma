@@ -59,7 +59,10 @@ model Customer {
   id           String   @id @default(cuid())
   restaurantId String
   name         String
-  phone        String
+  /// Optional — a walk-in customer created manually may have only a name.
+  /// The @@unique below stays safe with this: Postgres treats multiple NULLs
+  /// as distinct, so several no-phone customers can coexist per restaurant.
+  phone        String?
   address      String?
   notes        String?
   createdAt    DateTime @default(now())

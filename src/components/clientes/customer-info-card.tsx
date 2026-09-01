@@ -22,10 +22,12 @@ export function CustomerInfoCard({ customer }: { customer: CustomerDetail }) {
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <h2 className="text-[16px] font-semibold tracking-tight">{customer.name}</h2>
-          <span className="flex items-center gap-1.5 text-[13px] text-muted">
-            <Phone className="h-[13px] w-[13px]" />
-            {customer.phone}
-          </span>
+          {customer.phone ? (
+            <span className="flex items-center gap-1.5 text-[13px] text-muted">
+              <Phone className="h-[13px] w-[13px]" />
+              {customer.phone}
+            </span>
+          ) : null}
           {customer.address ? (
             <span className="flex items-start gap-1.5 text-[13px] text-muted">
               <MapPin className="mt-0.5 h-[13px] w-[13px] flex-none" />

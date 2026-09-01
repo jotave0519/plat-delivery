@@ -13,7 +13,7 @@ export function CustomerForm({
   onSaved,
   onCancel,
 }: {
-  initial?: { id: string; name: string; phone: string; address: string | null; notes: string | null };
+  initial?: { id: string; name: string; phone: string | null; address: string | null; notes: string | null };
   /** Called after a successful save — the caller decides where to go next. */
   onSaved?: (customerId: string) => void;
   onCancel?: () => void;
@@ -30,7 +30,6 @@ export function CustomerForm({
     e.preventDefault();
     setError(null);
     if (!name.trim()) return setError("Informe o nome do cliente.");
-    if (phone.trim().length < 8) return setError("Informe um telefone válido.");
 
     startTransition(async () => {
       const result = await saveCustomer({
@@ -60,7 +59,7 @@ export function CustomerForm({
         <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do cliente" />
       </label>
       <label className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium text-muted">Telefone</span>
+        <span className="text-[13px] font-medium text-muted">Telefone (opcional)</span>
         <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-9999" />
       </label>
       <label className="flex flex-col gap-1.5">

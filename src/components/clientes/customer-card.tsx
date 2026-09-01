@@ -16,10 +16,12 @@ export function CustomerCard({ customer }: { customer: CustomerListItem }) {
     >
       <div className="flex flex-col gap-0.5">
         <span className="truncate text-[15.5px] font-semibold tracking-tight">{customer.name}</span>
-        <span className="flex items-center gap-1.5 text-[12.5px] text-faint">
-          <Phone className="h-[12px] w-[12px]" />
-          {customer.phone}
-        </span>
+        {customer.phone ? (
+          <span className="flex items-center gap-1.5 text-[12.5px] text-faint">
+            <Phone className="h-[12px] w-[12px]" />
+            {customer.phone}
+          </span>
+        ) : null}
         {customer.address ? (
           <span className="flex items-start gap-1.5 text-[12px] text-faint">
             <MapPin className="mt-0.5 h-[12px] w-[12px] flex-none" />

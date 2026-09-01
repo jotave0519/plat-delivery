@@ -8,7 +8,7 @@ export const CUSTOMERS_PAGE_SIZE = 20;
 export type CustomerListItem = {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   address: string | null;
   totalPedidos: number;
   valorGasto: number;
@@ -74,7 +74,7 @@ export async function listCustomers(
 export type CustomerDetail = {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   address: string | null;
   notes: string | null;
   createdAt: Date;
