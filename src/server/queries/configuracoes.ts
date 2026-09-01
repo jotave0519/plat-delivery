@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import type { Role } from "@/generated/prisma";
+import type { PaymentMethod, Role } from "@/generated/prisma";
 import { normalizeOpeningHours, type OpeningHours } from "@/lib/opening-hours";
 
 // Re-exported as types only — client components must import the runtime
@@ -29,6 +29,40 @@ export async function getRestaurantSettings(restaurantId: string): Promise<Resta
     address: restaurant.address,
     pixKey: restaurant.pixKey,
     openingHours: normalizeOpeningHours(restaurant.openingHours),
+  };
+}
+
+export type AiSettings = {
+  aiEnabled: boolean;
+  faqText: string | null;
+  deliveryAreasText: string | null;
+  defaultDeliveryFee: number | null;
+  acceptedPaymentMethods: PaymentMethod[];
+  menuPdfFileName: string | null;
+  menuPdfUpdatedAt: Date | null;
+};
+
+export async function getAiSettings(restaurantId: string): Promise<AiSettings> {
+  const restaurant = await db.restaurant.findUniqueOrThrow({
+    where: { id: restaurantId },
+    select: {
+      aiEnabled: true,
+      faqText: true,
+      deliveryAreasText: true,
+      defaultDeliveryFee: true,
+      acceptedPaymentMethods: true,
+      menuPdfFileName: true,
+      menuPdfUpdatedAt: true,
+    },
+  });
+  return {
+    aiEnabled: restaurant.aiEnabled,
+    faqText: restaurant.faqText,
+    deliveryAreasText: restaurant.deliveryAreasText,
+    defaultDeliveryFee: restaurant.defaultDeliveryFee ? Number(restaurant.defaultDeliveryFee) : null,
+    acceptedPaymentMethods: restaurant.acceptedPaymentMethods,
+    menuPdfFileName: restaurant.menuPdfFileName,
+    menuPdfUpdatedAt: restaurant.menuPdfUpdatedAt,
   };
 }
 

@@ -9,8 +9,12 @@ export function CancelOrderButton({ orderId }: { orderId: string }) {
   const [pending, startTransition] = useTransition();
 
   function handleClick() {
-    if (!confirm("Cancelar este pedido? Essa ação não pode ser desfeita.")) return;
-    startTransition(() => cancelOrder(orderId));
+    // A single native prompt covers both the confirm step and the optional
+    // reason: clicking "Cancelar" on the dialog aborts (returns null) —
+    // clicking "OK" proceeds, with or without text typed in.
+    const reason = prompt("Cancelar este pedido? Essa ação não pode ser desfeita.\n\nMotivo (opcional):");
+    if (reason === null) return;
+    startTransition(() => cancelOrder(orderId, reason || undefined));
   }
 
   return (

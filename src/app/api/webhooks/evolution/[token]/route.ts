@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import { processConversationMessage } from "@/server/actions/atendimento-ia-conversa";
 import type { Prisma } from "@/generated/prisma";
 
 /**
@@ -13,10 +14,13 @@ import type { Prisma } from "@/generated/prisma";
  *
  * It resolves which restaurant the event belongs to (via instanceName →
  * WhatsappConnection), logs the raw payload for every event type (audit
- * trail), and additionally keeps WhatsappConnection's live status in sync
- * for the two event types Fase 1 (conexão) cares about — QRCODE_UPDATED and
- * CONNECTION_UPDATE. Everything else (MESSAGES_UPSERT, etc.) is still just
- * logged; processing those is Fase 2 (persistência de conversas).
+ * trail), keeps WhatsappConnection's live status in sync for QRCODE_UPDATED/
+ * CONNECTION_UPDATE, and hands MESSAGES_UPSERT off to the conversational
+ * agent (processConversationMessage). The exact MESSAGES_UPSERT payload
+ * shape is unconfirmed against the real Evolution API — extraction below
+ * tries several known Baileys/Evolution field paths defensively; every raw
+ * payload is logged regardless, so a real test message's shape can be read
+ * straight from WhatsappWebhookEvent and the extraction adjusted if needed.
  */
 export async function POST(request: Request, ctx: RouteContext<"/api/webhooks/evolution/[token]">) {
   const { token } = await ctx.params;
@@ -68,10 +72,74 @@ export async function POST(request: Request, ctx: RouteContext<"/api/webhooks/ev
           ...(phoneNumber ? { phoneNumber } : {}),
         },
       });
+    } else if (eventType === "MESSAGES_UPSERT") {
+      const inbound = extractInboundMessage(payload);
+      // Skip our own sent messages (echoed back by Evolution API) and
+      // anything we couldn't confidently parse — never guess a phone number.
+      if (inbound && !inbound.fromMe && inbound.text && inbound.phoneNumber) {
+        try {
+          await processConversationMessage({
+            restaurantId: connection.restaurantId,
+            phoneNumber: inbound.phoneNumber,
+            pushName: inbound.pushName,
+            text: inbound.text,
+            whatsappMessageId: inbound.messageId,
+            instanceName,
+          });
+        } catch (err) {
+          console.error("Falha ao processar mensagem recebida do WhatsApp:", err);
+        }
+      }
     }
   }
 
   return NextResponse.json({ received: true });
+}
+
+type InboundMessage = {
+  phoneNumber: string | null;
+  fromMe: boolean;
+  messageId: string | null;
+  pushName: string | null;
+  text: string | null;
+};
+
+/**
+ * Defensive extraction for a MESSAGES_UPSERT event — the exact payload shape
+ * hasn't been confirmed against a real Evolution API instance yet. Tries the
+ * known Baileys/Evolution field paths; returns null if nothing recognizable
+ * is found (rather than guessing).
+ */
+function extractInboundMessage(payload: unknown): InboundMessage | null {
+  if (!payload || typeof payload !== "object") return null;
+  const root = payload as Record<string, unknown>;
+  const rawData = root.data;
+  // Some Evolution API configurations wrap the message(s) in `data.messages`
+  // (array); most send a single message object directly in `data`.
+  const data =
+    rawData && typeof rawData === "object" && Array.isArray((rawData as Record<string, unknown>).messages)
+      ? ((rawData as Record<string, unknown>).messages as unknown[])[0]
+      : rawData;
+  if (!data || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+
+  const key = (d.key && typeof d.key === "object" ? d.key : {}) as Record<string, unknown>;
+  const remoteJid = typeof key.remoteJid === "string" ? key.remoteJid : null;
+  const fromMe = key.fromMe === true;
+  const messageId = typeof key.id === "string" ? key.id : null;
+  const pushName = typeof d.pushName === "string" ? d.pushName : null;
+
+  const message = (d.message && typeof d.message === "object" ? d.message : {}) as Record<string, unknown>;
+  const extendedText = (message.extendedTextMessage && typeof message.extendedTextMessage === "object"
+    ? message.extendedTextMessage
+    : {}) as Record<string, unknown>;
+  const text =
+    (typeof message.conversation === "string" ? message.conversation : null) ??
+    (typeof extendedText.text === "string" ? extendedText.text : null);
+
+  const phoneNumber = remoteJid ? remoteJid.split("@")[0] : null;
+
+  return { phoneNumber, fromMe, messageId, pushName, text };
 }
 
 function extractString(payload: unknown, key: string): string | null {

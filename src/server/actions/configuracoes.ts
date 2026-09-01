@@ -57,6 +57,70 @@ export async function saveOpeningHours(hours: OpeningHours) {
   revalidatePath("/configuracoes");
 }
 
+const aiSettingsSchema = z.object({
+  aiEnabled: z.boolean(),
+  faqText: z.string().optional(),
+  deliveryAreasText: z.string().optional(),
+  defaultDeliveryFee: z.number().min(0).max(500).optional(),
+  acceptedPaymentMethods: z.array(z.enum(["PIX", "CARTAO", "DINHEIRO", "VALE_REFEICAO"])).min(1, "Selecione pelo menos uma forma de pagamento."),
+});
+
+/** Atendimento IA settings — FAQ, delivery areas, default fee, accepted payment methods, and the master on/off toggle. */
+export async function saveAiSettings(input: z.infer<typeof aiSettingsSchema>) {
+  const tenant = await getTenant();
+  if (!MANAGER_ROLES.includes(tenant.role)) return { error: "Sem permissão para editar as configurações da IA." };
+
+  const parsed = aiSettingsSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const data = parsed.data;
+
+  await db.restaurant.update({
+    where: { id: tenant.restaurantId },
+    data: {
+      aiEnabled: data.aiEnabled,
+      faqText: data.faqText?.trim() || null,
+      deliveryAreasText: data.deliveryAreasText?.trim() || null,
+      defaultDeliveryFee: data.defaultDeliveryFee ?? null,
+      acceptedPaymentMethods: data.acceptedPaymentMethods,
+    },
+  });
+  revalidatePath("/atendimento-ia");
+}
+
+const MAX_PDF_BASE64_LENGTH = 14_000_000 * 1.4; // ~14MB file, base64-inflated — mirrors the menu-import upload limit
+
+const menuPdfSchema = z.object({
+  base64: z.string().min(1).max(MAX_PDF_BASE64_LENGTH, "Arquivo muito grande."),
+  fileName: z.string().min(1),
+});
+
+/** Stores the restaurant's menu PDF as base64 in Postgres — same pattern already used for WhatsappConnection.qrCode, no new storage infrastructure. */
+export async function saveMenuPdf(input: z.infer<typeof menuPdfSchema>) {
+  const tenant = await getTenant();
+  if (!MANAGER_ROLES.includes(tenant.role)) return { error: "Sem permissão para atualizar o cardápio em PDF." };
+
+  const parsed = menuPdfSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Arquivo inválido." };
+  const data = parsed.data;
+
+  await db.restaurant.update({
+    where: { id: tenant.restaurantId },
+    data: { menuPdfBase64: data.base64, menuPdfFileName: data.fileName, menuPdfUpdatedAt: new Date() },
+  });
+  revalidatePath("/atendimento-ia");
+}
+
+export async function removeMenuPdf() {
+  const tenant = await getTenant();
+  if (!MANAGER_ROLES.includes(tenant.role)) return { error: "Sem permissão para remover o cardápio em PDF." };
+
+  await db.restaurant.update({
+    where: { id: tenant.restaurantId },
+    data: { menuPdfBase64: null, menuPdfFileName: null, menuPdfUpdatedAt: null },
+  });
+  revalidatePath("/atendimento-ia");
+}
+
 const createUserSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   email: z.string().email("E-mail inválido"),

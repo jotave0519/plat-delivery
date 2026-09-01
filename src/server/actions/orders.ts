@@ -7,6 +7,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getTenant } from "@/lib/tenant";
 import { FLOW } from "@/lib/order-flow";
+import { priceOrderItems, nextOrderNumber } from "@/server/orders/pricing";
+import { notifyOrderStatusChange, notifyOrderCancelled } from "@/server/actions/whatsapp-order-notifications";
 
 function revalidateOrderPaths(orderId?: string) {
   revalidatePath("/dashboard");
@@ -38,10 +40,14 @@ export async function advanceOrderStatus(orderId: string) {
   ]);
 
   revalidateOrderPaths(order.id);
+  // Best-effort (the function itself never throws) — awaited so it reliably
+  // runs to completion rather than racing the request's response. No-ops
+  // for anything not from the WhatsApp agent (see the function's comment).
+  await notifyOrderStatusChange(order.id);
 }
 
-/** Cancels an order still in progress. No-op on an already-finished order. */
-export async function cancelOrder(orderId: string) {
+/** Cancels an order still in progress. `reason` is optional — a staff member can cancel without giving one. No-op on an already-finished order. */
+export async function cancelOrder(orderId: string, reason?: string) {
   const tenant = await getTenant();
 
   const order = await db.order.findFirst({
@@ -50,12 +56,15 @@ export async function cancelOrder(orderId: string) {
   });
   if (!order || order.status === "CONCLUIDO" || order.status === "CANCELADO") return;
 
+  const cancelReason = reason?.trim() || null;
+
   await db.$transaction([
-    db.order.update({ where: { id: order.id }, data: { status: "CANCELADO" } }),
+    db.order.update({ where: { id: order.id }, data: { status: "CANCELADO", cancelReason } }),
     db.orderEvent.create({ data: { orderId: order.id, status: "CANCELADO" } }),
   ]);
 
   revalidateOrderPaths(order.id);
+  await notifyOrderCancelled(order.id, cancelReason);
 }
 
 /** Customer picker in the manual order form — name/phone search, tenant-scoped. */
@@ -145,46 +154,14 @@ export async function createManualOrder(input: CreateManualOrderInput) {
     customerId = customer.id;
   }
 
-  const productIds = [...new Set(data.items.map((i) => i.productId))];
-  const products = await db.product.findMany({
-    where: { id: { in: productIds }, restaurantId: tenant.restaurantId, isAvailable: true },
-    include: { optionGroups: { include: { items: true } } },
-  });
-  const productMap = new Map(products.map((p) => [p.id, p]));
-
-  let subtotal = 0;
-  const itemsToCreate = [];
-  for (const item of data.items) {
-    const product = productMap.get(item.productId);
-    if (!product) return { error: "Um dos produtos não está mais disponível." };
-
-    const allOptionItems = product.optionGroups.flatMap((g) => g.items);
-    const selectedOptions = (item.optionItemIds ?? [])
-      .map((id) => allOptionItems.find((oi) => oi.id === id))
-      .filter((oi): oi is NonNullable<typeof oi> => Boolean(oi));
-
-    const unitPrice = Number(product.price);
-    const optionsTotal = selectedOptions.reduce((sum, oi) => sum + Number(oi.price), 0);
-    subtotal += (unitPrice + optionsTotal) * item.quantity;
-
-    itemsToCreate.push({
-      productId: product.id,
-      quantity: item.quantity,
-      unitPrice,
-      notes: item.notes || null,
-      options: { create: selectedOptions.map((oi) => ({ optionItemId: oi.id, price: Number(oi.price) })) },
-    });
-  }
+  const priced = await priceOrderItems(tenant.restaurantId, data.items);
+  if ("error" in priced) return { error: priced.error };
+  const { subtotal, itemsToCreate } = priced;
 
   const deliveryFee = data.fulfillment === "DELIVERY" ? data.deliveryFee : 0;
   const total = subtotal + deliveryFee;
 
-  const lastOrder = await db.order.findFirst({
-    where: { restaurantId: tenant.restaurantId },
-    orderBy: { number: "desc" },
-    select: { number: true },
-  });
-  const number = (lastOrder?.number ?? 1000) + 1;
+  const number = await nextOrderNumber(tenant.restaurantId);
 
   const order = await db.order.create({
     data: {

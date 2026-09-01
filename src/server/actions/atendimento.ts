@@ -95,3 +95,18 @@ export async function refreshConnectionStatus() {
     lastEventAt: connection.lastEventAt,
   };
 }
+
+/** Lets staff take a conversation back from (or hand it back to) the AI agent — the same switch transferir_para_humano flips automatically. */
+export async function setConversationAiEnabled(conversationId: string, aiEnabled: boolean) {
+  const tenant = await getTenant();
+  if (!MANAGER_ROLES.includes(tenant.role)) return { error: "Sem permissão para gerenciar conversas." };
+
+  const conversation = await db.conversation.findFirst({
+    where: { id: conversationId, restaurantId: tenant.restaurantId },
+  });
+  if (!conversation) return { error: "Conversa não encontrada." };
+
+  await db.conversation.update({ where: { id: conversationId }, data: { aiEnabled } });
+  revalidatePath(`/atendimento-ia/conversas/${conversationId}`);
+  revalidatePath("/atendimento-ia");
+}

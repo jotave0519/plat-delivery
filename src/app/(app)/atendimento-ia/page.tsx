@@ -1,8 +1,12 @@
 import { Lock } from "lucide-react";
 
 import { getTenant } from "@/lib/tenant";
-import { getWhatsappConnection } from "@/server/queries/atendimento";
+import { getWhatsappConnection, listConversations } from "@/server/queries/atendimento";
+import { getAiSettings } from "@/server/queries/configuracoes";
 import { WhatsappConnectionCard } from "@/components/atendimento/whatsapp-connection-card";
+import { ConversationsList } from "@/components/atendimento/conversations-list";
+import { AiSettingsForm } from "@/components/configuracoes/ai-settings-form";
+import { MenuPdfForm } from "@/components/configuracoes/menu-pdf-form";
 
 export default async function AtendimentoIaPage() {
   const tenant = await getTenant();
@@ -22,15 +26,18 @@ export default async function AtendimentoIaPage() {
     );
   }
 
-  const connection = await getWhatsappConnection(tenant.restaurantId);
+  const [connection, aiSettings, conversations] = await Promise.all([
+    getWhatsappConnection(tenant.restaurantId),
+    getAiSettings(tenant.restaurantId),
+    listConversations(tenant.restaurantId),
+  ]);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 px-[clamp(18px,2.4vw,34px)] py-7 pb-16">
       <div className="flex flex-col gap-1">
         <h1 className="text-[22px] font-semibold tracking-tight">Atendimento IA</h1>
         <p className="text-[13px] text-faint">
-          Conexão do restaurante com o WhatsApp, via Evolution API. O agente de atendimento automático chega em uma
-          próxima etapa — por enquanto, esta tela só cuida de conectar o número.
+          Conexão com o WhatsApp, configuração do agente de atendimento automático e acompanhamento das conversas.
         </p>
       </div>
 
@@ -48,6 +55,21 @@ export default async function AtendimentoIaPage() {
               : null
           }
         />
+      </section>
+
+      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+        <h2 className="text-[15px] font-semibold tracking-tight">Configurações da IA</h2>
+        <AiSettingsForm settings={aiSettings} />
+      </section>
+
+      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+        <h2 className="text-[15px] font-semibold tracking-tight">Cardápio em PDF</h2>
+        <MenuPdfForm fileName={aiSettings.menuPdfFileName} updatedAt={aiSettings.menuPdfUpdatedAt} />
+      </section>
+
+      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+        <h2 className="text-[15px] font-semibold tracking-tight">Conversas recentes</h2>
+        <ConversationsList conversations={conversations} />
       </section>
     </div>
   );

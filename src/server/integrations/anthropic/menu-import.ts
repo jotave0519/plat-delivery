@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 
-import { env, isMenuImportConfigured } from "@/lib/env";
+import { env, isAnthropicConfigured } from "@/lib/env";
 
 /**
  * Reads a menu (PDF or photo) and extracts categories/products via Claude's
@@ -59,7 +59,7 @@ Regras:
 - Nunca assuma que é uma pizzaria ou qualquer tipo específico — funciona para qualquer estabelecimento.`;
 
 export async function extractMenuFromFile(base64Data: string, mimeType: SupportedMenuFileType): Promise<ExtractedMenu> {
-  if (!isMenuImportConfigured) throw new MenuImportNotConfiguredError();
+  if (!isAnthropicConfigured) throw new MenuImportNotConfiguredError();
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 

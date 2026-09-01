@@ -21,6 +21,23 @@ model Restaurant {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // ---------- Atendimento IA (WhatsApp agent) settings ----------
+  // All additive/optional-or-defaulted so existing restaurants are
+  // unaffected until an owner explicitly configures them. `aiEnabled`
+  // defaults to false on purpose — the agent never turns itself on.
+  aiEnabled              Boolean        @default(false)
+  faqText                String?        @db.Text
+  /// Freeform, descriptive only — no delivery-area enforcement exists yet.
+  /// The AI can quote this when asked "do you deliver in X?", but nothing
+  /// blocks an order based on it (see briefing: prepare the architecture,
+  /// don't invent enforcement rules).
+  deliveryAreasText      String?        @db.Text
+  defaultDeliveryFee     Decimal?       @db.Decimal(10, 2)
+  acceptedPaymentMethods PaymentMethod[] @default([PIX, CARTAO, DINHEIRO, VALE_REFEICAO])
+  menuPdfBase64          String?        @db.Text
+  menuPdfFileName        String?
+  menuPdfUpdatedAt       DateTime?
+
   users          User[]
   customers      Customer[]
   categories     Category[]
@@ -29,6 +46,7 @@ model Restaurant {
   stockItems     StockItem[]
   financialEntries FinancialEntry[]
   whatsappConnection WhatsappConnection?
+  conversations  Conversation[]
 }
 
 enum Role {
@@ -68,8 +86,9 @@ model Customer {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  orders     Order[]
+  restaurant    Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orders        Order[]
+  conversations Conversation[]
 
   @@index([restaurantId])
   @@unique([restaurantId, phone])
@@ -186,6 +205,8 @@ model Order {
   paymentStatus PaymentStatus @default(PENDENTE)
   address       String?
   notes         String?
+  /// Optional — filled in only when a staff member cancels with a reason.
+  cancelReason  String?
   subtotal      Decimal       @db.Decimal(10, 2)
   deliveryFee   Decimal       @db.Decimal(10, 2) @default(0)
   total         Decimal       @db.Decimal(10, 2)
@@ -347,4 +368,63 @@ model WhatsappWebhookEvent {
 
   @@index([restaurantId])
   @@index([createdAt])
+}
+
+// ---------- Atendimento IA agent: conversations ----------
+//
+// One Conversation per (restaurant, WhatsApp phone number) thread. State
+// durable between inbound messages lives in `draftCart` (the order being
+// built) — every message, in and out, is also persisted to `Message` for
+// both context-reconstruction on the next turn and a future conversation
+// history UI. The AI never writes directly to Customer/Order — see
+// src/server/actions/atendimento-ia-conversa.ts's "confirmar_pedido" tool,
+// the only place that creates real rows, always re-deriving prices from
+// the database.
+
+model Conversation {
+  id            String   @id @default(cuid())
+  restaurantId  String
+  customerId    String?
+  phoneNumber   String
+  contactName   String?
+  /// Per-conversation human-handoff switch — set to false to let a staff
+  /// member take over without disconnecting WhatsApp or disabling the
+  /// agent for every other conversation.
+  aiEnabled     Boolean  @default(true)
+  /// The order being built in this conversation (items/address/payment/
+  /// phone-to-use) — read and rewritten whole by the agent's tools, never
+  /// diffed incrementally, so it can never drift from what was actually
+  /// said. Cleared back to null once confirmar_pedido creates the real
+  /// Order.
+  draftCart     Json?
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+  messages   Message[]
+
+  @@unique([restaurantId, phoneNumber])
+  @@index([restaurantId])
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  direction      MessageDirection
+  content        String
+  /// Evolution API's message id, when known — the idempotency key: a
+  /// redelivered webhook for the same id is a no-op, never a second reply
+  /// or a second order.
+  whatsappMessageId String?       @unique
+  createdAt      DateTime         @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
 }

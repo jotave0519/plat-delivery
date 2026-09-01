@@ -26,10 +26,13 @@ const envSchema = z.object({
   // WhatsApp retorna um erro amigável em vez de cadastrar um webhook quebrado.
   APP_URL: z.string().url("APP_URL deve ser uma URL válida (ex.: https://seu-dominio.com)").optional(),
 
-  // Usada só pela importação de cardápio por IA (ver
-  // src/server/integrations/anthropic/). Opcional pelo mesmo motivo que as
-  // vars da Evolution API: sem ela, o botão "Importar cardápio" mostra um
-  // erro amigável em vez de quebrar o app inteiro no boot.
+  // Compartilhada por toda integração com a API da Claude — importação de
+  // cardápio (src/server/integrations/anthropic/menu-import.ts) e o agente
+  // de atendimento por WhatsApp (src/server/integrations/anthropic/
+  // whatsapp-agent.ts). Uma chave só, reaproveitada — não existe uma
+  // segunda variável/configuração separada para cada funcionalidade de IA.
+  // Opcional pelo mesmo motivo que as vars da Evolution API: sem ela, cada
+  // funcionalidade mostra um erro amigável em vez de quebrar o app no boot.
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
 });
 
@@ -47,5 +50,5 @@ export const env = loadEnv();
 /** True once the Evolution API integration has real credentials configured. */
 export const isEvolutionApiConfigured = Boolean(env.EVOLUTION_API_URL && env.EVOLUTION_API_KEY);
 
-/** True once the menu-import-by-AI feature has a real API key configured. */
-export const isMenuImportConfigured = Boolean(env.ANTHROPIC_API_KEY);
+/** True once any Claude-API-backed feature (menu import, WhatsApp agent) has a real key configured. */
+export const isAnthropicConfigured = Boolean(env.ANTHROPIC_API_KEY);

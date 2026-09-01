@@ -60,7 +60,7 @@ export function createInstance(instanceName: string, webhookUrl: string) {
       webhook: {
         enabled: true,
         url: webhookUrl,
-        events: ["QRCODE_UPDATED", "CONNECTION_UPDATE"],
+        events: ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"],
       },
     }),
   });
@@ -81,6 +81,26 @@ export function sendTextMessage(instanceName: string, to: string, text: string) 
   return evolutionRequest<{ key: { id: string } }>(`/message/sendText/${instanceName}`, {
     method: "POST",
     body: JSON.stringify({ number: to, text }),
+  });
+}
+
+/**
+ * Sends a document (e.g. the restaurant's menu PDF) as base64. Body shape
+ * follows the same convention as sendTextMessage (also unconfirmed — see the
+ * note at the top of this file); verify both together once a real WhatsApp
+ * number is connected and a real send is attempted.
+ */
+export function sendDocument(instanceName: string, to: string, base64: string, fileName: string, caption?: string) {
+  return evolutionRequest<{ key: { id: string } }>(`/message/sendMedia/${instanceName}`, {
+    method: "POST",
+    body: JSON.stringify({
+      number: to,
+      mediatype: "document",
+      mimetype: "application/pdf",
+      media: base64,
+      fileName,
+      caption: caption ?? "",
+    }),
   });
 }
 

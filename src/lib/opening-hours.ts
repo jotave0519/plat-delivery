@@ -34,3 +34,63 @@ export function normalizeOpeningHours(raw: unknown): OpeningHours {
   }
   return result;
 }
+
+const JS_SHORT_DAY_TO_WEEKDAY: Record<string, Weekday> = {
+  Mon: "seg",
+  Tue: "ter",
+  Wed: "qua",
+  Thu: "qui",
+  Fri: "sex",
+  Sat: "sab",
+  Sun: "dom",
+};
+
+/**
+ * Used by the WhatsApp AI agent to know whether the restaurant is open
+ * right now, in the restaurant's own timezone (not the server's). Handles
+ * overnight ranges (e.g. 18:00-00:30). If the timezone/formatting fails for
+ * any reason, fails "open" rather than silently refusing every order.
+ */
+export function isOpenNow(hours: OpeningHours, timezone: string, now: Date = new Date()): boolean {
+  try {
+    const dayShort = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" }).format(now);
+    const weekday = JS_SHORT_DAY_TO_WEEKDAY[dayShort];
+    if (!weekday) return true;
+
+    const day = hours[weekday];
+    if (!day || day.closed) return false;
+
+    const currentTime = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(now);
+
+    // Overnight range (closes after midnight, e.g. 18:00-00:30)
+    if (day.close < day.open) {
+      return currentTime >= day.open || currentTime < day.close;
+    }
+    return currentTime >= day.open && currentTime < day.close;
+  } catch {
+    return true;
+  }
+}
+
+const WEEKDAY_LABELS: Record<Weekday, string> = {
+  seg: "Segunda",
+  ter: "Terça",
+  qua: "Quarta",
+  qui: "Quinta",
+  sex: "Sexta",
+  sab: "Sábado",
+  dom: "Domingo",
+};
+
+/** One line per day — used to give the AI agent a plain-text schedule it can quote. */
+export function formatOpeningHoursSummary(hours: OpeningHours): string {
+  return WEEKDAYS.map((day) => {
+    const d = hours[day];
+    return `${WEEKDAY_LABELS[day]}: ${d.closed ? "fechado" : `${d.open} às ${d.close}`}`;
+  }).join("\n");
+}

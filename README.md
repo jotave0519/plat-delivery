@@ -1,8 +1,8 @@
 # Balcão — plataforma de gestão para delivery
 
 SaaS de gestão para restaurantes e negócios de delivery: pedidos, cardápio,
-clientes, estoque, financeiro e (futuramente) atendimento via IA no
-WhatsApp — tudo multi-tenant desde a base.
+clientes, estoque, financeiro e atendimento via IA no WhatsApp — tudo
+multi-tenant desde a base.
 
 A identidade visual segue o protótipo do Claude Design (paleta, tipografia
 Instrument Sans, componentes e comportamento responsivo). Veja o plano de
@@ -16,7 +16,7 @@ infraestrutura).
 - **Supabase PostgreSQL + Prisma 7** (driver adapter `@prisma/adapter-pg` — Prisma 7 não aceita mais `url` direto no schema)
 - **Auth.js (next-auth v5)** com credenciais (e-mail/senha), sessão JWT
 - **Tailwind CSS v4**, tokens de design em `src/app/globals.css`, ícones `lucide-react`
-- **EasyPanel** (Docker) para deploy; **Evolution API** para WhatsApp (conexão do número já funcional — ver seção própria; o agente de IA em si ainda não)
+- **EasyPanel** (Docker) para deploy; **Evolution API** para WhatsApp (conexão + agente de atendimento por IA — ver seção própria); **API da Claude (Anthropic)** para o agente de atendimento e a importação de cardápio
 
 ## Variáveis de ambiente
 
@@ -32,9 +32,9 @@ por que existem duas URLs de banco) estão comentados no próprio arquivo.
 | `EVOLUTION_API_KEY` | não* | API key admin da Evolution API |
 | `EVOLUTION_WEBHOOK_SECRET` | não* | Segredo próprio para validar o webhook em `/api/webhooks/evolution/[token]` |
 | `APP_URL` | não* | URL pública deste app (sem barra final) — usada para montar a webhook URL passada à Evolution API ao conectar um WhatsApp |
-| `ANTHROPIC_API_KEY` | não** | Chave da API da Claude — usada só pela importação de cardápio (`/cardapio/importar`) |
+| `ANTHROPIC_API_KEY` | não** | Chave da API da Claude — compartilhada pela importação de cardápio (`/cardapio/importar`) **e** pelo agente de atendimento por WhatsApp; uma única variável, sem configuração duplicada |
 
-Sem as três primeiras a app não inicia (`src/lib/env.ts` falha rápido e explica o que falta). \*As quatro variáveis de WhatsApp são opcionais para a app subir, mas **obrigatórias** para o botão "Conectar WhatsApp" em `/atendimento-ia` funcionar — sem `APP_URL` configurada, ele mostra um erro amigável em vez de cadastrar um webhook que a Evolution API não conseguiria alcançar. \*\*Sem `ANTHROPIC_API_KEY`, o app sobe normalmente — só o botão "Importar cardápio" mostra um erro amigável em vez de funcionar.
+Sem as três primeiras a app não inicia (`src/lib/env.ts` falha rápido e explica o que falta). \*As quatro variáveis de WhatsApp são opcionais para a app subir, mas **obrigatórias** para o botão "Conectar WhatsApp" em `/atendimento-ia` funcionar — sem `APP_URL` configurada, ele mostra um erro amigável em vez de cadastrar um webhook que a Evolution API não conseguiria alcançar. \*\*Sem `ANTHROPIC_API_KEY`, o app sobe normalmente — só a importação de cardápio e as respostas automáticas do agente de WhatsApp mostram um erro amigável (ou simplesmente ficam em silêncio, no caso do agente) em vez de funcionar. **Nenhuma variável de ambiente nova foi criada para o agente de atendimento** — tudo reaproveita `ANTHROPIC_API_KEY`/`EVOLUTION_*`/`APP_URL` já existentes.
 
 ## Banco de dados — Supabase (padrão) ou Postgres local (opcional)
 
@@ -120,43 +120,119 @@ docker run -p 3000:3000 \
   plat_delivery
 ```
 
-## Evolution API (WhatsApp) — conexão pronta, agente de IA ainda não
+## Atendimento IA via WhatsApp (Evolution API + Claude)
 
-`/atendimento-ia` (restrito a OWNER/ADMIN) conecta o WhatsApp do restaurante
-de verdade — ainda sem nenhuma lógica de conversa/IA:
+`/atendimento-ia` (restrito a OWNER/ADMIN) reúne conexão do WhatsApp,
+configuração do agente e acompanhamento das conversas.
+
+### Conexão com o WhatsApp
 
 - `prisma/schema.prisma`: `WhatsappConnection` (uma por restaurante, mapeia
   `instanceName` ↔ `restaurantId`, guarda status/QR/telefone) e
-  `WhatsappWebhookEvent` (log bruto de todo evento recebido, útil pra
-  depuração mesmo dos tipos ainda não processados).
+  `WhatsappWebhookEvent` (log bruto de todo evento recebido — auditoria,
+  inclusive dos tipos já processados).
 - `src/server/integrations/evolution/client.ts`: wrapper HTTP tipado
-  (criar/remover instância, QR code, status). Shapes confirmados contra a
-  documentação pública da Evolution API v2; `sendTextMessage` ainda não é
-  usado em lugar nenhum — fica pra quando a Fase 2 (persistência de
-  conversas) precisar dele, e deve ser verificado contra a API real antes.
-- `src/app/api/webhooks/evolution/[token]/route.ts`: endpoint único de
-  webhook. Configure o webhook da sua instância Evolution API para
-  `https://<seu-dominio>/api/webhooks/evolution/<EVOLUTION_WEBHOOK_SECRET>`
-  — o segredo no path é a autenticação (Evolution API não assina requests
-  por padrão). Resolve o restaurante pelo `instanceName`, grava todo evento
-  em `WhatsappWebhookEvent` e, para `QRCODE_UPDATED`/`CONNECTION_UPDATE`,
-  atualiza `WhatsappConnection` em tempo real. Outros tipos de evento
-  (`MESSAGES_UPSERT` etc.) continuam só logados — processá-los é a Fase 2.
+  (criar/remover instância, QR code, status, enviar texto, enviar
+  documento). Shapes de `createInstance`/`fetchConnectionState`/
+  `fetchQrCode`/`deleteInstance` confirmados contra a documentação pública
+  da Evolution API v2. **`sendTextMessage`/`sendDocument` ainda não foram
+  verificados contra uma instância real conectada** — o corpo da
+  requisição está escrito com o formato mais provável, mas só um envio de
+  verdade confirma; ver "Pendências" abaixo.
 - Fluxo de conexão (`src/server/actions/atendimento.ts` +
   `src/components/atendimento/whatsapp-connection-card.tsx`): clicar em
   "Conectar WhatsApp" cria a instância na Evolution API, exibe o QR code e
-  faz polling do status a cada 3s enquanto aguarda a leitura (cobre o caso
-  do webhook não alcançar o app, ex.: dev local sem URL pública);
-  "Desconectar"/"Cancelar" remove a instância na Evolution API e limpa o
-  estado local.
+  faz polling do status a cada 3s; "Desconectar"/"Cancelar" remove a
+  instância na Evolution API e limpa o estado local.
 
-**Verificado contra a Evolution API real** (não só localmente): criação de
-instância, exibição do QR code e remoção testados de ponta a ponta contra
-`appdelivery-evolution-api.uule1c.easypanel.host`, confirmando via
+**Verificado contra a Evolution API real**: criação de instância, exibição
+do QR code e remoção testados de ponta a ponta, confirmando via
 `GET /instance/fetchInstances` que a instância aparece e depois some. O
 recebimento do webhook (`CONNECTION_UPDATE` gravando `CONNECTED` de
 verdade) só pode ser validado com `APP_URL` apontando para uma URL
 publicamente alcançável — em produção no EasyPanel, não em dev local.
+
+### O agente de atendimento
+
+Cada mensagem recebida (`MESSAGES_UPSERT`, tratado em
+`src/app/api/webhooks/evolution/[token]/route.ts`) é passada para
+`processConversationMessage` (`src/server/actions/atendimento-ia-conversa.ts`),
+que:
+
+1. Resolve/cria a `Conversation` (uma por restaurante+telefone) e checa
+   idempotência por `Message.whatsappMessageId` (`@unique`) — uma
+   reentrega do mesmo evento pela Evolution API nunca gera uma segunda
+   resposta ou um segundo pedido.
+2. Monta o contexto para a Claude (`claude-opus-5`, loop manual de
+   tool-calling em `src/server/integrations/anthropic/whatsapp-agent.ts`):
+   cardápio real (`getCatalogForOrderForm`, com `productId`/`optionItemId`
+   explícitos no texto para a IA nunca inventar um id), horário de
+   funcionamento (`isOpenNow`/`formatOpeningHoursSummary`), FAQ, áreas de
+   entrega, taxa padrão, formas de pagamento aceitas, chave Pix e o
+   carrinho em construção (`Conversation.draftCart`).
+3. Ferramentas disponíveis: `atualizar_pedido` (reescreve o carrinho
+   inteiro, sempre repreçando pelo banco via `priceOrderItems` — a IA
+   nunca informa preço), `confirmar_pedido` (só ela grava de verdade:
+   acha/cria o `Customer` por telefone e cria o `Order` com
+   `channel: "WHATSAPP_IA"`), `transferir_para_humano` (desliga
+   `Conversation.aiEnabled`) e `enviar_cardapio_pdf` (envia o PDF
+   cadastrado, se houver).
+4. A resposta final é enviada via `sendTextMessage` e tanto a mensagem
+   recebida quanto a enviada ficam em `Message` (transcript completo).
+
+O pedido criado aparece imediatamente em `/pedidos`, com canal "WhatsApp ·
+IA" e seguindo o mesmo fluxo simplificado (Confirmar → Em preparo →
+Pronto → Em entrega → Concluído) de qualquer outro pedido.
+`advanceOrderStatus`/`cancelOrder` (`src/server/actions/orders.ts`)
+notificam automaticamente o cliente por WhatsApp a cada mudança —
+**somente para pedidos com canal `WHATSAPP_IA`**, nunca para pedidos
+manuais/balcão — via `src/server/actions/whatsapp-order-notifications.ts`.
+
+### Configuração (tudo em `/atendimento-ia`, nada por variável de ambiente)
+
+- **Conexão do WhatsApp**: ver seção acima.
+- **Chave Pix**: já configurável em `/configuracoes` (usada tanto por
+  pedidos manuais quanto pela IA quando o cliente escolhe Pix).
+- **Configurações da IA**: liga/desliga geral (`Restaurant.aiEnabled`,
+  **desligado por padrão** — nenhum restaurante é surpreendido), formas
+  de pagamento aceitas, taxa de entrega padrão, áreas de entrega (texto
+  livre, só informativo — não bloqueia pedido nenhum) e FAQ/informações
+  do negócio.
+- **Cardápio em PDF**: upload guardado como base64 no Postgres (mesmo
+  padrão já usado para o QR code — sem storage/infra nova); a IA envia
+  quando o cliente pede.
+- **Conversas recentes**: lista simples (não é um CRM) com link para o
+  histórico completo de mensagens de cada conversa, e um botão para um
+  atendente assumir manualmente (ou devolver à IA) uma conversa
+  específica — independente do liga/desliga geral do restaurante.
+
+### Pendências (só verificáveis com um WhatsApp real conectado)
+
+- Formato exato do corpo de `sendTextMessage`/`sendDocument`.
+- Formato exato do payload de `MESSAGES_UPSERT` — a extração em
+  `route.ts` é defensiva (tenta os campos conhecidos do Baileys/Evolution:
+  `data.key.remoteJid`/`fromMe`/`id`, `data.pushName`,
+  `data.message.conversation`/`extendedTextMessage.text`), e todo payload
+  bruto continua sendo gravado em `WhatsappWebhookEvent` — se o formato
+  real divergir, é só ler a linha mais recente dessa tabela e ajustar a
+  função `extractInboundMessage`.
+- Envio de PDF de verdade pelo WhatsApp.
+
+### Testado sem WhatsApp real (contra o Supabase e a API da Claude reais)
+
+`processConversationMessage` chamado diretamente, simulando mensagens
+recebidas: cliente novo, pedido em linguagem natural, alteração do
+carrinho no meio da conversa (1 item → 2, forma de pagamento, retirada,
+nome), resumo e confirmação — pedido real criado com canal `WHATSAPP_IA` e
+preço recalculado a partir do produto no banco; reenvio do mesmo
+`whatsappMessageId` confirmado como no-op (nem mensagem nem pedido
+duplicado); pedido de transferência para humano confirmado desligando
+`aiEnabled` e silenciando o agente na conversa; dois restaurantes
+diferentes com o mesmo número de telefone confirmados como conversas
+completamente isoladas. Todos os dados de teste foram removidos ao final
+e o restaurante real (`Casa Bonfim`) foi conferido restaurado ao estado
+exato de antes do teste (`aiEnabled: false`, `WhatsappConnection`
+`DISCONNECTED`, zero linhas remanescentes).
 
 ## Estrutura
 
@@ -174,10 +250,16 @@ src/app/(auth)/login                tela de login
 src/app/(app)/...                   shell autenticado: sidebar, pedidos, cardápio, clientes,
                                      estoque, financeiro, atendimento-ia, configurações
 src/app/api/health                  health check (EasyPanel)
-src/app/api/webhooks/evolution      webhook da Evolution API
+src/app/api/webhooks/evolution      webhook da Evolution API (conexão + mensagens recebidas)
 src/server/integrations/evolution   cliente HTTP da Evolution API
-src/server/integrations/anthropic   chamada à API da Claude p/ importação de cardápio (extração estruturada)
-src/components/atendimento          componentes do módulo Atendimento IA (cartão de conexão do WhatsApp)
+src/server/integrations/anthropic   chamadas à API da Claude — importação de cardápio (extração
+                                     estruturada) e o loop de tool-calling do agente de WhatsApp
+src/server/actions/atendimento-ia-conversa.ts   orquestração do agente de atendimento (uma
+                                     mensagem recebida → resposta), ferramentas do agente
+src/server/orders/pricing.ts        precificação de itens/adicionais a partir do banco —
+                                     compartilhada entre o pedido manual e o agente de WhatsApp
+src/components/atendimento          componentes do módulo Atendimento IA (conexão, configurações
+                                     da IA, lista/detalhe de conversas)
 src/components/dashboard            componentes do Dashboard
 src/components/pedidos              componentes do módulo de Pedidos (lista, detalhe, criação manual)
 src/components/cardapio             componentes do módulo de Cardápio (categorias, produtos, adicionais)
@@ -254,11 +336,16 @@ src/server/queries                   consultas de leitura (dashboard, pedidos, c
   último módulo — encontrou e corrigiu um IDOR real entre tenants em
   `saveProduct` (Cardápio), além de achados de eficiência e uma
   inconsistência de formatação. Ver seção própria no plano.
-- **Atendimento IA — Fase 1 (conexão com o WhatsApp) completa e
-  funcional**: `/atendimento-ia` conecta o WhatsApp do restaurante via
-  Evolution API de verdade (QR code, status ao vivo, desconectar) — ver
-  seção "Evolution API" acima. A conversa/agente de IA em si ainda não
-  existe (ver roadmap).
+- **Atendimento IA via WhatsApp completo e funcional**: conexão real com a
+  Evolution API (QR code, status ao vivo, desconectar) e um agente de
+  atendimento de verdade (Claude + tool-calling) que conversa em linguagem
+  natural, consulta o cardápio real, monta e ajusta o carrinho, pede
+  confirmação com resumo completo, cria o pedido de verdade (canal
+  `WHATSAPP_IA`, mesmo fluxo simplificado de status), envia atualizações
+  automáticas de status/cancelamento, envia o cardápio em PDF quando
+  pedido, e transfere para um atendente humano quando solicitado ou
+  quando não consegue ajudar — ver seção "Atendimento IA via WhatsApp"
+  acima para o detalhamento completo.
 - **Preparação para uso real**: banco de produção zerado de dados fictícios
   (~1200 pedidos de demo e afins removidos via `prisma/reset-business-data.ts`,
   mantendo `Restaurant`/`User`/`WhatsappConnection` intactos), seed travado
@@ -290,11 +377,10 @@ src/server/queries                   consultas de leitura (dashboard, pedidos, c
 
 ## Próximas etapas (roadmap)
 
-- **Fase 2**: persistir conversas/mensagens do WhatsApp (novos modelos
-  `Conversation`/`Message` no schema) e uma UI de inbox para ver o
-  histórico — hoje o webhook só loga esses eventos em
-  `WhatsappWebhookEvent`, sem estruturá-los.
-- **Fase 3**: o agente de IA de atendimento de fato (tool-calling via API
-  da Anthropic, respostas automáticas, criação de pedido pelo WhatsApp) —
-  deliberadamente deixado por último, por ser a peça com mais decisões de
-  produto em aberto.
+Nenhum módulo do roadmap original ficou pendente. O que resta é
+verificação empírica contra um WhatsApp real (ver "Pendências" na seção
+"Atendimento IA via WhatsApp") e evoluções possíveis, não bloqueantes:
+uma tela de conversas mais completa (a arquitetura atual — `Message`
+guardando o transcript completo — já permite isso sem mudança de schema),
+e uma revisão de código dedicada ao módulo de atendimento (o `/code-review`
+completo mais recente foi antes desta funcionalidade existir).
