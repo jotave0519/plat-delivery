@@ -133,12 +133,9 @@ configuração do agente e acompanhamento das conversas.
   inclusive dos tipos já processados).
 - `src/server/integrations/evolution/client.ts`: wrapper HTTP tipado
   (criar/remover instância, QR code, status, enviar texto, enviar
-  documento). Shapes de `createInstance`/`fetchConnectionState`/
-  `fetchQrCode`/`deleteInstance` confirmados contra a documentação pública
-  da Evolution API v2. **`sendTextMessage`/`sendDocument` ainda não foram
-  verificados contra uma instância real conectada** — o corpo da
-  requisição está escrito com o formato mais provável, mas só um envio de
-  verdade confirma; ver "Pendências" abaixo.
+  documento). Todos os shapes, incluindo `sendTextMessage`, já confirmados
+  contra a Evolution API real (ver "Confirmado contra um WhatsApp real"
+  abaixo) — só `sendDocument` (envio de PDF) segue não testado.
 - Fluxo de conexão (`src/server/actions/atendimento.ts` +
   `src/components/atendimento/whatsapp-connection-card.tsx`): clicar em
   "Conectar WhatsApp" cria a instância na Evolution API, exibe o QR code e
@@ -206,17 +203,62 @@ manuais/balcão — via `src/server/actions/whatsapp-order-notifications.ts`.
   atendente assumir manualmente (ou devolver à IA) uma conversa
   específica — independente do liga/desliga geral do restaurante.
 
-### Pendências (só verificáveis com um WhatsApp real conectado)
+### Incidente: primeira mensagem real não teve resposta (2026-09-01, resolvido)
 
-- Formato exato do corpo de `sendTextMessage`/`sendDocument`.
-- Formato exato do payload de `MESSAGES_UPSERT` — a extração em
-  `route.ts` é defensiva (tenta os campos conhecidos do Baileys/Evolution:
-  `data.key.remoteJid`/`fromMe`/`id`, `data.pushName`,
-  `data.message.conversation`/`extendedTextMessage.text`), e todo payload
-  bruto continua sendo gravado em `WhatsappWebhookEvent` — se o formato
-  real divergir, é só ler a linha mais recente dessa tabela e ajustar a
-  função `extractInboundMessage`.
-- Envio de PDF de verdade pelo WhatsApp.
+No primeiro uso real, uma mensagem enviada ao número conectado não gerou
+nenhuma resposta. Investigação (sem alterar nada às cegas — cada hipótese
+foi confirmada por evidência antes de qualquer mudança) encontrou **dois
+problemas reais, em camadas diferentes**:
+
+1. **Configuração**: a instância na Evolution API tinha o webhook
+   registrado como `http://localhost:3000/api/webhooks/evolution/...`
+   (`GET /webhook/find/{instance}` confirmou isso) — provavelmente de uma
+   reconexão feita com o servidor de desenvolvimento local, cujo
+   `APP_URL` no `.env` é `http://localhost:3000`. A Evolution API (rodando
+   no EasyPanel) não tem como alcançar `localhost` da máquina local, então
+   **nenhum evento — nem de conexão, nem de mensagem — jamais chegou** à
+   aplicação (`WhatsappWebhookEvent` estava com zero linhas, sempre).
+   Corrigido chamando `POST /webhook/set/{instance}` diretamente contra a
+   Evolution API, apontando para o domínio público real
+   (`https://appdelivery-appdelivery.uule1c.easypanel.host/...`) — sem
+   precisar recriar a instância nem escanear o QR code de novo, já que o
+   WhatsApp já estava de fato conectado (`connectionState: "open"`) do
+   lado da Evolution API, só a nossa aplicação não sabia disso.
+2. **Código**: depois de corrigir o webhook, os eventos passaram a chegar
+   de verdade — e revelaram um segundo bug, esse sim no código. A Evolution
+   API envia o campo `event` em minúsculo com ponto
+   (`"messages.upsert"`, `"connection.update"`), mas
+   `src/app/api/webhooks/evolution/[token]/route.ts` só fazia
+   `.toUpperCase()` nesse valor e comparava com `"MESSAGES_UPSERT"`/
+   `"CONNECTION_UPDATE"` (com underscore) — `"MESSAGES.UPSERT" !==
+   "MESSAGES_UPSERT"`, então a condição nunca batia e a mensagem ficava só
+   logada em `WhatsappWebhookEvent`, sem nunca chegar em
+   `processConversationMessage`. Corrigido normalizando pontos para
+   underscore logo após o `toUpperCase()`.
+
+Depois das duas correções, a mensagem real que já estava pendente
+(`"oi"`, de um número de teste) foi processada diretamente contra o banco
+de produção e a API da Claude real, e a resposta foi enviada de volta e
+recebida de verdade no WhatsApp — ver "Confirmado contra um WhatsApp real"
+abaixo.
+
+### Confirmado contra um WhatsApp real conectado (2026-09-01)
+
+Depois do primeiro uso real revelar dois bugs de configuração/código (ver
+"Incidente" abaixo), uma mensagem real ("oi") foi processada de ponta a
+ponta: webhook recebido → `processConversationMessage` → Claude respondeu
+corretamente que o restaurante estava fechado no horário → resposta
+enviada de volta via `sendTextMessage` e recebida no WhatsApp real. Isso
+confirma, contra a API real (não mais só suposição):
+- O payload de `MESSAGES_UPSERT` bate exatamente com o formato assumido em
+  `extractInboundMessage` (`data.key.remoteJid`/`fromMe`/`id`,
+  `data.pushName`, `data.message.conversation`) — nenhum ajuste necessário.
+- O corpo `{ number, text }` de `sendTextMessage` está correto — a
+  Evolution API aceitou e entregou a mensagem.
+
+### Pendência restante (só verificável com um WhatsApp real conectado)
+
+- Formato do corpo de `sendDocument` (envio de PDF) — ainda não testado.
 
 ### Testado sem WhatsApp real (contra o Supabase e a API da Claude reais)
 

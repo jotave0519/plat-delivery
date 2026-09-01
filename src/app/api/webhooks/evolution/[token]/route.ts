@@ -37,7 +37,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/webhooks/ev
   }
 
   const instanceName = extractString(payload, "instance");
-  const eventType = (extractString(payload, "event") ?? "unknown").toUpperCase();
+  // Evolution API sends `event` as lowercase dot-notation (e.g.
+  // "messages.upsert", "connection.update") — normalize dots to underscores
+  // so it matches the SCREAMING_SNAKE_CASE names used for comparison below
+  // (and for the `events` list passed to POST /webhook/set).
+  const eventType = (extractString(payload, "event") ?? "unknown").toUpperCase().replace(/\./g, "_");
 
   const connection = instanceName
     ? await db.whatsappConnection.findUnique({ where: { instanceName }, select: { restaurantId: true } })
