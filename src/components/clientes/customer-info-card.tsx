@@ -21,14 +21,32 @@ export function CustomerInfoCard({ customer }: { customer: CustomerDetail }) {
     <section className="flex flex-col gap-3 rounded-[20px] border border-border bg-surface p-5">
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h2 className="text-[16px] font-semibold tracking-tight">{customer.name}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-[16px] font-semibold tracking-tight">{customer.name}</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10.5px] font-medium ${
+                customer.statusCliente === "recorrente" ? "bg-ok-bg text-ok-fg" : "bg-neutral-bg text-neutral-icon"
+              }`}
+            >
+              {customer.statusCliente === "recorrente" ? "Recorrente" : "Novo"}
+            </span>
+          </div>
           {customer.phone ? (
             <span className="flex items-center gap-1.5 text-[13px] text-muted">
               <Phone className="h-[13px] w-[13px]" />
               {customer.phone}
             </span>
           ) : null}
-          {customer.address ? (
+          {customer.enderecosUtilizados.length > 0 ? (
+            <div className="flex flex-col gap-0.5">
+              {customer.enderecosUtilizados.map((endereco) => (
+                <span key={endereco} className="flex items-start gap-1.5 text-[13px] text-muted">
+                  <MapPin className="mt-0.5 h-[13px] w-[13px] flex-none" />
+                  {endereco}
+                </span>
+              ))}
+            </div>
+          ) : customer.address ? (
             <span className="flex items-start gap-1.5 text-[13px] text-muted">
               <MapPin className="mt-0.5 h-[13px] w-[13px] flex-none" />
               {customer.address}

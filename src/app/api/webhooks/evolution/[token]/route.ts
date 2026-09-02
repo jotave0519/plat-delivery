@@ -80,13 +80,14 @@ export async function POST(request: Request, ctx: RouteContext<"/api/webhooks/ev
       const inbound = extractInboundMessage(payload);
       // Skip our own sent messages (echoed back by Evolution API) and
       // anything we couldn't confidently parse — never guess a phone number.
-      if (inbound && !inbound.fromMe && inbound.text && inbound.phoneNumber) {
+      if (inbound && !inbound.fromMe && inbound.phoneNumber && (inbound.text || inbound.image)) {
         try {
           await processConversationMessage({
             restaurantId: connection.restaurantId,
             phoneNumber: inbound.phoneNumber,
             pushName: inbound.pushName,
             text: inbound.text,
+            image: inbound.image,
             whatsappMessageId: inbound.messageId,
             instanceName,
           });
@@ -106,6 +107,8 @@ type InboundMessage = {
   messageId: string | null;
   pushName: string | null;
   text: string | null;
+  /** Present when the message is an image (e.g. a Pix payment proof) — the raw {key, message} needed to fetch/decode it via fetchMediaBase64. */
+  image: { rawMessage: unknown; mimetype: string | null; caption: string | null } | null;
 };
 
 /**
@@ -141,9 +144,20 @@ function extractInboundMessage(payload: unknown): InboundMessage | null {
     (typeof message.conversation === "string" ? message.conversation : null) ??
     (typeof extendedText.text === "string" ? extendedText.text : null);
 
+  const imageMessage = (message.imageMessage && typeof message.imageMessage === "object"
+    ? message.imageMessage
+    : null) as Record<string, unknown> | null;
+  const image = imageMessage
+    ? {
+        rawMessage: { key: d.key, message: d.message },
+        mimetype: typeof imageMessage.mimetype === "string" ? imageMessage.mimetype : null,
+        caption: typeof imageMessage.caption === "string" ? imageMessage.caption : null,
+      }
+    : null;
+
   const phoneNumber = remoteJid ? remoteJid.split("@")[0] : null;
 
-  return { phoneNumber, fromMe, messageId, pushName, text };
+  return { phoneNumber, fromMe, messageId, pushName, text, image };
 }
 
 function extractString(payload: unknown, key: string): string | null {

@@ -8,12 +8,12 @@ import { env, isEvolutionApiConfigured } from "@/lib/env";
  * flow) — a single, isolated place to talk to Evolution API from, instead of
  * scattering fetch calls.
  *
- * createInstance/fetchConnectionState/fetchQrCode/deleteInstance shapes are
- * confirmed against Evolution API v2's public docs
- * (docs.evolutionfoundation.com.br). sendTextMessage is NOT yet confirmed
- * empirically (the docs disagree with common knowledge of v2's actual body
- * shape) — it isn't called anywhere yet, so verify it against a real
- * connected instance before using it in Fase 2 (persistência de conversas).
+ * createInstance/fetchConnectionState/fetchQrCode/deleteInstance/sendTextMessage
+ * are all confirmed against a real connected instance (see the WhatsApp
+ * agent's incident report). sendDocument/fetchMediaBase64 are NOT yet
+ * confirmed empirically — implemented with the most likely v2 shape;
+ * WhatsappWebhookEvent always logs the raw payload, so a real test can
+ * confirm/correct them without guesswork.
  */
 
 export class EvolutionApiNotConfiguredError extends Error {
@@ -101,6 +101,21 @@ export function sendDocument(instanceName: string, to: string, base64: string, f
       fileName,
       caption: caption ?? "",
     }),
+  });
+}
+
+/**
+ * Downloads and decodes an inbound media message (e.g. a Pix payment
+ * proof photo) as base64. `message` is the raw `data` object from the
+ * MESSAGES_UPSERT webhook payload (containing `key` and `message`) — Evolution
+ * API needs the original message reference to fetch/decrypt the media.
+ * Endpoint shape NOT yet confirmed against a real instance — see the note
+ * at the top of this file.
+ */
+export function fetchMediaBase64(instanceName: string, message: unknown) {
+  return evolutionRequest<{ base64?: string; mimetype?: string }>(`/chat/getBase64FromMediaMessage/${instanceName}`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
   });
 }
 

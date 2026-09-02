@@ -3,7 +3,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { OrderStatus } from "@/generated/prisma";
 import { formatDelta, minutesAgo } from "@/lib/format";
-import { CHANNEL_LABELS, LATE_THRESHOLD_MINUTES, PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
+import { CHANNEL_LABELS, LATE_THRESHOLD_MINUTES, PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_IS_PAID } from "@/lib/order-flow";
 import { summarizeItems } from "@/lib/order-summary";
 
 export type Period = "hoje" | "7dias" | "30dias";
@@ -185,6 +185,7 @@ export async function getDashboardData(restaurantId: string, period: Period): Pr
           total: true,
           notes: true,
           updatedAt: true,
+          customerNameOverride: true,
           customer: { select: { name: true } },
           items: { select: { quantity: true, product: { select: { name: true } } } },
         },
@@ -211,9 +212,9 @@ export async function getDashboardData(restaurantId: string, period: Period): Pr
     return {
       id: o.id,
       number: o.number,
-      clienteNome: o.customer?.name ?? "Cliente balcão",
+      clienteNome: o.customerNameOverride ?? o.customer?.name ?? "Cliente balcão",
       canalLabel: CHANNEL_LABELS[o.channel] ?? o.channel,
-      pagamentoLabel: `${PAYMENT_METHOD_LABELS[o.paymentMethod] ?? o.paymentMethod} ${o.paymentStatus === "PAGO" ? "pago" : "pendente"}`,
+      pagamentoLabel: `${PAYMENT_METHOD_LABELS[o.paymentMethod] ?? o.paymentMethod} · ${PAYMENT_STATUS_IS_PAID[o.paymentStatus] ? "pago" : (PAYMENT_STATUS_LABELS[o.paymentStatus] ?? "pendente").toLowerCase()}`,
       status: o.status,
       valor: Number(o.total),
       resumo: summarizeItems(o.items),

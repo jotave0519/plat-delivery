@@ -86,6 +86,25 @@ export async function cancelOrder(orderId: string, reason?: string) {
   await notifyOrderCancelled(order.id, cancelReason);
 }
 
+/**
+ * Staff confirms a payment from the platform — the only way an order's
+ * paymentStatus ever becomes PAGO from a non-PAGO state. Receiving a Pix
+ * proof image never does this automatically (see capturePixProofImage in
+ * atendimento-ia-conversa.ts) — a human always makes the call.
+ */
+export async function confirmPayment(orderId: string) {
+  const tenant = await getTenant();
+
+  const order = await db.order.findFirst({
+    where: { id: orderId, restaurantId: tenant.restaurantId },
+    select: { id: true, paymentStatus: true },
+  });
+  if (!order || order.paymentStatus === "PAGO") return;
+
+  await db.order.update({ where: { id: order.id }, data: { paymentStatus: "PAGO" } });
+  revalidateOrderPaths(order.id);
+}
+
 /** Customer picker in the manual order form — name/phone search, tenant-scoped. */
 export async function searchCustomers(query: string) {
   const tenant = await getTenant();

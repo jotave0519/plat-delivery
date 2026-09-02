@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { normalizeOpeningHours, isOpenNow, formatOpeningHoursSummary } from "@/lib/opening-hours";
 import { getCatalogForOrderForm, type CatalogCategory } from "@/server/queries/orders";
 import { priceOrderItems, nextOrderNumber } from "@/server/orders/pricing";
-import { sendTextMessage, sendDocument } from "@/server/integrations/evolution/client";
+import { sendTextMessage, sendDocument, fetchMediaBase64 } from "@/server/integrations/evolution/client";
 import { PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
 import { extractRating } from "@/lib/feedback-rating";
 import {
@@ -177,7 +177,7 @@ const TOOLS: AgentTool[] = [
 
 // ---------- system prompt ----------
 
-async function buildSystemPrompt(restaurantId: string, draftCart: DraftCart) {
+async function buildSystemPrompt(restaurantId: string, phoneNumber: string, draftCart: DraftCart) {
   const restaurant = await db.restaurant.findUniqueOrThrow({
     where: { id: restaurantId },
     select: {
@@ -200,6 +200,28 @@ async function buildSystemPrompt(restaurantId: string, draftCart: DraftCart) {
   const open = isOpenNow(hours, restaurant.timezone);
   const paymentMethods = restaurant.acceptedPaymentMethods.map((m) => PAYMENT_METHOD_LABELS[m] ?? m).join(", ");
 
+  // Look up the real customer record (not just conversation history) so a
+  // returning customer is recognized reliably even if their first order was
+  // outside the rolling message-history window loaded below.
+  const existingCustomer = await db.customer.findFirst({
+    where: { restaurantId, phone: phoneNumber.replace(/\D/g, "") },
+    select: { name: true, phone: true },
+  });
+  const lastOrderWithAddress = existingCustomer
+    ? await db.order.findFirst({
+        where: { restaurantId, customer: { phone: existingCustomer.phone }, address: { not: null } },
+        orderBy: { createdAt: "desc" },
+        select: { address: true },
+      })
+    : null;
+  const customerSection = existingCustomer
+    ? `- Já cadastrado? Sim — nome: ${existingCustomer.name}, telefone: ${existingCustomer.phone}\n  Já é o mesmo número que está conversando agora, então o telefone do pedido já está resolvido — não precisa perguntar "posso usar este número?" de novo. Use esse nome e telefone automaticamente, sem perguntar de novo — só pergunte de novo se o cliente disser que quer mudar.${
+        lastOrderWithAddress?.address
+          ? `\n- Último endereço de entrega usado: ${lastOrderWithAddress.address}\n  Se o pedido for entrega, pergunte se é pra usar esse mesmo endereço antes de pedir um novo.`
+          : ""
+      }`
+    : "- Já cadastrado? Não — é a primeira vez que esse número entra em contato. Pergunte o nome e confirme o telefone normalmente.";
+
   return `Você é o atendente virtual do restaurante "${restaurant.name}", conversando pelo WhatsApp. Fale de forma natural, cordial e objetiva, como uma pessoa de verdade — nunca ofereça um menu numerado tipo "digite 1 para...".
 
 REGRAS INEGOCIÁVEIS:
@@ -207,11 +229,18 @@ REGRAS INEGOCIÁVEIS:
 - Preços e disponibilidade vêm sempre do CARDÁPIO abaixo — não calcule nem estime nada por conta própria além de somar o que já está listado.
 - O cliente pode mudar de ideia a qualquer momento (trocar item, quantidade, endereço, forma de pagamento) — use atualizar_pedido de novo, o carrinho novo substitui o anterior.
 - Faça UMA pergunta por mensagem sempre que possível. Só junte duas perguntas na mesma mensagem quando forem sobre o mesmo assunto (ex.: "Prefere Pix ou cartão? Se for cartão, na entrega?" é aceitável — é tudo sobre pagamento). Nunca junte perguntas de assuntos diferentes (ex.: nome, telefone e endereço) numa mensagem só — pergunte cada uma na sua vez, como uma recepcionista faria.
-- Nunca pergunte de novo algo que o cliente já respondeu nesta conversa ou que já esteja em CARRINHO ATUAL DO CLIENTE abaixo (nome, telefone a usar, entrega/retirada, endereço, forma de pagamento) — reaproveite o que já foi dito em vez de repetir a pergunta.
-- Antes de confirmar_pedido você precisa saber, cada um perguntado na sua própria mensagem (pulando o que o cliente já informou): o nome do cliente; se o pedido deve usar este número de WhatsApp ou outro telefone; o endereço, se for entrega; e a forma de pagamento. Só depois de ter tudo isso, mostre um resumo completo em texto (itens, quantidades, valores, forma de entrega, endereço se houver, forma de pagamento) e espere confirmação explícita antes de chamar confirmar_pedido.
-- Se a forma de pagamento escolhida for Pix, informe a chave Pix abaixo e o valor total a pagar — nunca considere o pedido como pago só porque o cliente disse "já paguei" ou enviou um comprovante; isso fica para a equipe conferir depois.
+- Nunca pergunte de novo algo que o cliente já respondeu nesta conversa, que já esteja em CARRINHO ATUAL DO CLIENTE abaixo, ou que já esteja na seção CLIENTE abaixo (nome, telefone, endereço) — reaproveite o que já foi dito em vez de repetir a pergunta.
+- Antes de confirmar_pedido você precisa saber (pulando o que já estiver em CLIENTE ou já informado nesta conversa, cada pergunta restante na sua própria mensagem): o nome do cliente (só se ainda não estiver em CLIENTE); se o pedido deve usar este número de WhatsApp ou outro telefone — só pergunte isso para cliente novo, com "Posso usar este número do WhatsApp como telefone para o pedido?"; o endereço, se for entrega; e a forma de pagamento. Só depois de ter tudo isso, mostre um resumo completo em texto (itens, quantidades, valores, forma de entrega, endereço se houver, forma de pagamento) e espere confirmação explícita antes de chamar confirmar_pedido.
+- Forma de pagamento — cada uma tem um fluxo diferente, siga exatamente:
+  - Pix: informe a chave Pix abaixo e o valor total a pagar, e peça para o cliente enviar o comprovante em foto pelo WhatsApp assim que pagar. Nunca considere o pedido como pago só porque o cliente disse "já paguei" ou só porque enviou uma foto — o comprovante fica com a equipe pra conferir, você nunca confirma pagamento sozinho.
+  - Cartão, dinheiro ou qualquer outro método presencial: informe que o pagamento é feito na entrega (se for entrega) ou na retirada (se for retirada) — nunca peça comprovante nem trate como pago.
+- Se o cliente disser algo como "pode colocar outro nome nesse pedido" ou "usa outro nome dessa vez", use esse nome só para o pedido atual (chame atualizar_pedido só com o customerName pedido) — não é preciso avisar que o cadastro permanente não muda, isso é tratado automaticamente. Trocar o nome do pedido NÃO significa trocar o telefone — nunca envie phoneToUse nesse caso, a menos que o cliente diga um telefone explicitamente.
+- Nunca invente, adivinhe ou "complete" um número de telefone. Só preencha phoneToUse quando o cliente literalmente disser os dígitos de um telefone — em qualquer outra situação, deixe phoneToUse de fora da chamada (o sistema usa automaticamente o número real deste WhatsApp).
 - Se o cliente pedir para falar com uma pessoa, ou parecer confuso/insatisfeito e você não conseguir ajudar, chame transferir_para_humano.
 - Se pedirem o cardápio em PDF, diga que vai enviar (o sistema cuida do envio do arquivo automaticamente).
+
+CLIENTE:
+${customerSection}
 
 INFORMAÇÕES DO RESTAURANTE:
 - Nome: ${restaurant.name}
@@ -289,7 +318,6 @@ function buildToolHandlers(params: {
       if (!cart.fulfillment) return { error: "Falta saber se é entrega ou retirada." };
       if (cart.fulfillment === "DELIVERY" && !cart.address?.trim()) return { error: "Falta o endereço de entrega." };
       if (!cart.paymentMethod) return { error: "Falta saber a forma de pagamento." };
-      if (!cart.customerName?.trim()) return { error: "Falta o nome do cliente." };
 
       // cart.phoneToUse sometimes ends up as a phrase like "este número"
       // instead of an actual number (the model describing the customer's
@@ -298,8 +326,31 @@ function buildToolHandlers(params: {
       // downstream WhatsApp notification for this order. Only trust it
       // when it actually contains something phone-shaped; otherwise fall
       // back to the real WhatsApp number this conversation is happening on.
+      //
+      // Also seen in testing: the model reformatting the real number (e.g.
+      // dropping the "55" country code into a local "(11) 9xxxx-xxxx" style)
+      // and slipping a digit in the process — not a deliberately different
+      // phone, just a transcription error. Compare only the last 8 digits
+      // (the actual subscriber number, immune to country/area-code framing
+      // differences) — near-identical there means "same person", regardless
+      // of a country/area-code prefix mismatch.
+      const realPhoneDigits = phoneNumber.replace(/\D/g, "");
       const phoneToUseDigits = cart.phoneToUse?.replace(/\D/g, "") ?? "";
-      const phone = phoneToUseDigits.length >= 8 ? phoneToUseDigits : phoneNumber.replace(/\D/g, "");
+      const CORE_LEN = 8;
+      const realCore = realPhoneDigits.slice(-CORE_LEN);
+      const candidateCore = phoneToUseDigits.slice(-CORE_LEN);
+      const isNearDuplicateOfRealNumber =
+        candidateCore.length === CORE_LEN &&
+        [...candidateCore].filter((ch, i) => ch !== realCore[i]).length <= 1;
+      const phone =
+        phoneToUseDigits.length >= 8 && !isNearDuplicateOfRealNumber ? phoneToUseDigits : realPhoneDigits;
+
+      // Safety net: a recognized customer's name should already be in the
+      // cart (the prompt tells the model to reuse it), but fall back to the
+      // registered name directly if the model ever forgets to copy it over.
+      const existingCustomer = await db.customer.findFirst({ where: { restaurantId, phone } });
+      const requestedName = cart.customerName?.trim() || existingCustomer?.name;
+      if (!requestedName) return { error: "Falta o nome do cliente." };
 
       const priced = await priceOrderItems(
         restaurantId,
@@ -315,13 +366,24 @@ function buildToolHandlers(params: {
       const deliveryFee = cart.fulfillment === "DELIVERY" ? Number(restaurant.defaultDeliveryFee ?? 0) : 0;
       const total = subtotal + deliveryFee;
 
-      const customer = await db.customer.upsert({
-        where: { restaurantId_phone: { restaurantId, phone } },
-        update: { name: cart.customerName.trim() },
-        create: { restaurantId, name: cart.customerName.trim(), phone },
-      });
+      // A name that differs from what's on file is treated as a one-off for
+      // this order (e.g. "pode colocar outro nome nesse pedido") — it never
+      // overwrites the customer's permanent registration.
+      const nameDiffers = existingCustomer && existingCustomer.name !== requestedName;
+      const customer = existingCustomer
+        ? existingCustomer
+        : await db.customer.create({ data: { restaurantId, name: requestedName, phone } });
 
       const number = await nextOrderNumber(restaurantId);
+
+      // PIX stays PENDENTE ("aguardando pagamento") until a proof arrives;
+      // in-person methods already tell staff exactly when they'll be paid.
+      const paymentStatus =
+        cart.paymentMethod === "PIX"
+          ? "PENDENTE"
+          : cart.fulfillment === "DELIVERY"
+            ? "PAGAMENTO_NA_ENTREGA"
+            : "PAGAMENTO_NA_RETIRADA";
 
       const order = await db.order.create({
         data: {
@@ -332,7 +394,8 @@ function buildToolHandlers(params: {
           channel: "WHATSAPP_IA",
           fulfillment: cart.fulfillment,
           paymentMethod: cart.paymentMethod,
-          paymentStatus: "PENDENTE",
+          paymentStatus,
+          customerNameOverride: nameDiffers ? requestedName : null,
           address: cart.fulfillment === "DELIVERY" ? cart.address?.trim() : null,
           subtotal,
           deliveryFee,
@@ -420,15 +483,79 @@ async function captureFeedbackReply(params: {
   return true;
 }
 
+/**
+ * If this phone number has a WHATSAPP_IA order awaiting a Pix payment proof
+ * (paymentMethod PIX, paymentStatus PENDENTE), treats an inbound image as
+ * that proof: downloads/stores it and moves the order to
+ * AGUARDANDO_CONFIRMACAO_PIX — never straight to PAGO, a staff member always
+ * confirms via confirmPayment. Returns true when handled (short-circuits the
+ * turn, same as captureFeedbackReply), false when there's no order waiting
+ * for a proof (a generic reply is sent instead, without inventing further
+ * behavior).
+ */
+async function capturePixProofImage(params: {
+  restaurantId: string;
+  phoneNumber: string;
+  conversationId: string;
+  instanceName: string;
+  image: { rawMessage: unknown; mimetype: string | null; caption: string | null };
+}): Promise<boolean> {
+  const { restaurantId, phoneNumber, conversationId, instanceName, image } = params;
+
+  const order = await db.order.findFirst({
+    where: {
+      restaurantId,
+      channel: "WHATSAPP_IA",
+      paymentMethod: "PIX",
+      paymentStatus: "PENDENTE",
+      customer: { phone: phoneNumber.replace(/\D/g, "") },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  let reply: string;
+  if (!order) {
+    reply = "Recebi sua imagem, mas não tenho nenhum pagamento Pix aguardando comprovante no momento. Se precisar de algo, me avise! 😊";
+  } else {
+    try {
+      const media = await fetchMediaBase64(instanceName, image.rawMessage);
+      if (!media.base64) throw new Error("Evolution API não retornou o conteúdo da imagem.");
+      await db.order.update({
+        where: { id: order.id },
+        data: {
+          pixProofBase64: media.base64,
+          pixProofMimeType: media.mimetype ?? image.mimetype ?? "image/jpeg",
+          pixProofReceivedAt: new Date(),
+          paymentStatus: "AGUARDANDO_CONFIRMACAO_PIX",
+        },
+      });
+      reply = `Recebi seu comprovante do pedido #${order.number}! 📄 Nossa equipe vai confirmar o pagamento em breve.`;
+    } catch (err) {
+      console.error("Falha ao baixar comprovante do Pix via Evolution API:", err);
+      reply = "Recebi sua imagem, mas tive um problema pra processar o comprovante agora. Nossa equipe vai verificar por aqui mesmo.";
+    }
+  }
+
+  await db.message.create({ data: { conversationId, direction: "OUT", content: reply } });
+  try {
+    await sendTextMessage(instanceName, phoneNumber, reply);
+  } catch (err) {
+    console.error("Falha ao enviar confirmação de recebimento do comprovante:", err);
+  }
+
+  return true;
+}
+
 export async function processConversationMessage(params: {
   restaurantId: string;
   phoneNumber: string;
   pushName: string | null;
-  text: string;
+  text: string | null;
+  image?: { rawMessage: unknown; mimetype: string | null; caption: string | null } | null;
   whatsappMessageId: string | null;
   instanceName: string;
 }) {
-  const { restaurantId, phoneNumber, pushName, text, whatsappMessageId, instanceName } = params;
+  const { restaurantId, phoneNumber, pushName, text, image, whatsappMessageId, instanceName } = params;
 
   // Idempotency: if we've already recorded a message with this WhatsApp id,
   // this is a redelivery (or an echo) — do nothing.
@@ -447,10 +574,18 @@ export async function processConversationMessage(params: {
     data: {
       conversationId: conversation.id,
       direction: "IN",
-      content: text,
+      content: text ?? image?.caption ?? "[imagem]",
       whatsappMessageId: whatsappMessageId ?? undefined,
     },
   });
+
+  // An inbound image is treated as a Pix payment proof (if one is expected)
+  // — never as an ordering-agent turn, since the agent has no vision here.
+  if (image) {
+    await capturePixProofImage({ restaurantId, phoneNumber, conversationId: conversation.id, instanceName, image });
+    return;
+  }
+  if (!text) return; // nothing else to process (shouldn't happen — the webhook only forwards text-or-image)
 
   // Capture a reply to a pending post-order feedback request, if there is
   // one — this runs regardless of aiEnabled (collecting feedback isn't the
@@ -483,7 +618,7 @@ export async function processConversationMessage(params: {
     .reverse()
     .map((m) => ({ role: m.direction === "IN" ? "user" : "assistant", content: m.content }));
 
-  const systemPrompt = await buildSystemPrompt(restaurantId, draftCart);
+  const systemPrompt = await buildSystemPrompt(restaurantId, phoneNumber, draftCart);
   const toolHandlers = buildToolHandlers({
     restaurantId,
     phoneNumber,

@@ -1,11 +1,14 @@
 import { notFound } from "next/navigation";
-import { MapPin, Phone, StickyNote } from "lucide-react";
+import Image from "next/image";
+import { MapPin, Phone, StickyNote, Receipt } from "lucide-react";
 
 import { getTenant } from "@/lib/tenant";
 import { getOrderDetail } from "@/server/queries/orders";
-import { FLOW, TONE_CLASSES, CHANNEL_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
+import { confirmPayment } from "@/server/actions/orders";
+import { FLOW, TONE_CLASSES, CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_IS_PAID } from "@/lib/order-flow";
 import { formatBRL } from "@/lib/format";
 import { OrderStatusHeader } from "@/components/pedidos/order-status-header";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 
 function formatDateTime(date: Date) {
   return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -91,7 +94,7 @@ export default async function OrderDetailPage(props: PageProps<"/pedidos/[id]">)
           <section className="flex flex-col gap-3 rounded-[20px] border border-border bg-surface p-5">
             <h2 className="text-[15px] font-semibold tracking-tight">Cliente</h2>
             <div className="flex flex-col gap-1.5">
-              <span className="text-[14px] font-medium">{order.customer?.name ?? "Cliente balcão"}</span>
+              <span className="text-[14px] font-medium">{order.customerNameOverride ?? order.customer?.name ?? "Cliente balcão"}</span>
               {order.customer?.phone ? (
                 <span className="flex items-center gap-1.5 text-[13px] text-faint">
                   <Phone className="h-[13px] w-[13px]" />
@@ -123,11 +126,38 @@ export default async function OrderDetailPage(props: PageProps<"/pedidos/[id]">)
             </div>
             <div className="flex justify-between text-muted">
               <span>Status pgto.</span>
-              <span className={`font-medium ${order.paymentStatus === "PAGO" ? "text-ok-fg" : "text-warn-fg"}`}>
-                {order.paymentStatus === "PAGO" ? "Pago" : "Pendente"}
+              <span className={`font-medium ${PAYMENT_STATUS_IS_PAID[order.paymentStatus] ? "text-ok-fg" : "text-warn-fg"}`}>
+                {PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus}
               </span>
             </div>
           </section>
+
+          {order.paymentMethod === "PIX" && !PAYMENT_STATUS_IS_PAID[order.paymentStatus] ? (
+            <section className="flex flex-col gap-3 rounded-[20px] border border-border bg-surface p-5">
+              <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+                <Receipt className="h-4 w-4 text-muted" />
+                Comprovante Pix
+              </h2>
+              {order.pixProofBase64 ? (
+                <Image
+                  src={`data:${order.pixProofMimeType ?? "image/jpeg"};base64,${order.pixProofBase64}`}
+                  alt="Comprovante de pagamento enviado pelo cliente"
+                  width={600}
+                  height={320}
+                  unoptimized
+                  className="max-h-[320px] w-full rounded-[13px] border border-border-soft object-contain"
+                />
+              ) : (
+                <p className="text-[13px] text-faint">Aguardando o cliente enviar o comprovante pelo WhatsApp.</p>
+              )}
+              <ConfirmButton
+                action={confirmPayment.bind(null, order.id)}
+                confirmMessage="Confirmar que o pagamento deste pedido foi recebido?"
+                label="Confirmar pagamento"
+                className="flex items-center justify-center gap-2 rounded-[10px] bg-charcoal px-4 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+              />
+            </section>
+          ) : null}
         </aside>
       </div>
     </div>

@@ -142,3 +142,20 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   DINHEIRO: "Dinheiro",
   VALE_REFEICAO: "Vale-refeição",
 };
+
+export const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  PENDENTE: "Aguardando pagamento",
+  PAGO: "Pago",
+  AGUARDANDO_CONFIRMACAO_PIX: "Pix — aguardando confirmação",
+  PAGAMENTO_NA_ENTREGA: "Pagamento na entrega",
+  PAGAMENTO_NA_RETIRADA: "Pagamento na retirada",
+};
+
+/** Payment statuses that represent money not yet in hand — used wherever "pago" needs a strict on/off tone (e.g. a status chip's color). */
+export const PAYMENT_STATUS_IS_PAID: Record<string, boolean> = {
+  PENDENTE: false,
+  PAGO: true,
+  AGUARDANDO_CONFIRMACAO_PIX: false,
+  PAGAMENTO_NA_ENTREGA: false,
+  PAGAMENTO_NA_RETIRADA: false,
+};

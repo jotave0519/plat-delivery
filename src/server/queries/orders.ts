@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import type { Fulfillment, OrderStatus, Prisma } from "@/generated/prisma";
-import { CHANNEL_LABELS, LATE_THRESHOLD_MINUTES, PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
+import { CHANNEL_LABELS, LATE_THRESHOLD_MINUTES, PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_IS_PAID } from "@/lib/order-flow";
 import { minutesAgo } from "@/lib/format";
 import { summarizeItems } from "@/lib/order-summary";
 
@@ -87,9 +87,9 @@ export async function listOrders(restaurantId: string, filters: OrderListFilters
     return {
       id: o.id,
       number: o.number,
-      clienteNome: o.customer?.name ?? "Cliente balcão",
+      clienteNome: o.customerNameOverride ?? o.customer?.name ?? "Cliente balcão",
       canalLabel: CHANNEL_LABELS[o.channel] ?? o.channel,
-      pagamentoLabel: `${PAYMENT_METHOD_LABELS[o.paymentMethod] ?? o.paymentMethod} ${o.paymentStatus === "PAGO" ? "pago" : "pendente"}`,
+      pagamentoLabel: `${PAYMENT_METHOD_LABELS[o.paymentMethod] ?? o.paymentMethod} · ${PAYMENT_STATUS_IS_PAID[o.paymentStatus] ? "pago" : (PAYMENT_STATUS_LABELS[o.paymentStatus] ?? "pendente").toLowerCase()}`,
       status: o.status,
       fulfillment: o.fulfillment,
       valor: Number(o.total),

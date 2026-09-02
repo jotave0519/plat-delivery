@@ -82,11 +82,14 @@ export type CustomerDetail = {
   valorGasto: number;
   ticketMedio: number;
   ultimoPedido: Date | null;
+  /** Distinct delivery addresses actually used across this customer's orders (most recent first) — real data from Order.address, not the single Customer.address field. */
+  enderecosUtilizados: string[];
+  statusCliente: "novo" | "recorrente";
 };
 
 export async function getCustomerDetail(restaurantId: string, customerId: string): Promise<CustomerDetail | null> {
-  // Neither query depends on the other's result — fetch in parallel.
-  const [customer, agg] = await Promise.all([
+  // None of these three queries depend on another's result — fetch in parallel.
+  const [customer, agg, addressOrders] = await Promise.all([
     db.customer.findFirst({ where: { id: customerId, restaurantId } }),
     db.order.aggregate({
       where: { restaurantId, customerId, status: { not: "CANCELADO" } },
@@ -95,8 +98,15 @@ export async function getCustomerDetail(restaurantId: string, customerId: string
       _avg: { total: true },
       _max: { createdAt: true },
     }),
+    db.order.findMany({
+      where: { restaurantId, customerId, address: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { address: true },
+    }),
   ]);
   if (!customer) return null;
+
+  const enderecosUtilizados = [...new Set(addressOrders.map((o) => o.address).filter((a): a is string => Boolean(a)))];
 
   return {
     id: customer.id,
@@ -109,5 +119,7 @@ export async function getCustomerDetail(restaurantId: string, customerId: string
     valorGasto: Number(agg._sum.total ?? 0),
     ticketMedio: Number(agg._avg.total ?? 0),
     ultimoPedido: agg._max.createdAt,
+    enderecosUtilizados,
+    statusCliente: agg._count._all > 1 ? "recorrente" : "novo",
   };
 }

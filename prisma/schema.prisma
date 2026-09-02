@@ -190,9 +190,18 @@ enum PaymentMethod {
   VALE_REFEICAO
 }
 
+/// PENDENTE and PAGO predate the WhatsApp payment flow and keep their exact
+/// prior meaning ("aguardando pagamento" / "pago") — the 3 new values are
+/// additive, inferred automatically for WhatsApp orders (see confirmar_pedido
+/// in atendimento-ia-conversa.ts). Manual orders created by staff
+/// (createManualOrder) never use the new values — they always know
+/// PENDENTE/PAGO directly.
 enum PaymentStatus {
   PENDENTE
   PAGO
+  AGUARDANDO_CONFIRMACAO_PIX
+  PAGAMENTO_NA_ENTREGA
+  PAGAMENTO_NA_RETIRADA
 }
 
 model Order {
@@ -209,6 +218,17 @@ model Order {
   notes         String?
   /// Optional — filled in only when a staff member cancels with a reason.
   cancelReason  String?
+  /// One-off name for this order only, when it differs from the customer's
+  /// registered name (e.g. "pode colocar outro nome nesse pedido") — never
+  /// overwrites Customer.name. Null means "use the customer's name as-is".
+  customerNameOverride String?
+  /// Pix proof of payment, sent by the customer as a WhatsApp image —
+  /// same base64-in-Postgres pattern as Restaurant.menuPdfBase64/
+  /// WhatsappConnection.qrCode. Receiving this never marks the order paid by
+  /// itself; a staff member confirms via confirmPayment (src/server/actions/orders.ts).
+  pixProofBase64     String?   @db.Text
+  pixProofMimeType   String?
+  pixProofReceivedAt DateTime?
   subtotal      Decimal       @db.Decimal(10, 2)
   deliveryFee   Decimal       @db.Decimal(10, 2) @default(0)
   total         Decimal       @db.Decimal(10, 2)

@@ -71,7 +71,10 @@ export async function getFinanceiroData(
       where: {
         restaurantId,
         createdAt: { gte: start, lte: end },
-        paymentStatus: "PENDENTE",
+        // "a receber" = anything not yet paid — includes PENDENTE plus the
+        // WhatsApp-agent-specific statuses (Pix awaiting confirmation,
+        // payment on delivery/pickup), all of which are money not in hand yet.
+        paymentStatus: { not: "PAGO" },
         status: { not: "CANCELADO" },
       },
       _sum: { total: true },
