@@ -38,7 +38,7 @@ export function CartPanel({
             <button
               type="button"
               onClick={() => onRemove(item.key)}
-              className="grid h-7 w-7 flex-none place-items-center rounded-[8px] text-faint transition-colors hover:bg-crit-bg hover:text-crit"
+              className="grid h-9 w-9 flex-none place-items-center rounded-[8px] text-faint transition-colors hover:bg-crit-bg hover:text-crit"
             >
               <Trash2 className="h-[14px] w-[14px]" />
             </button>
@@ -47,7 +47,7 @@ export function CartPanel({
             <button
               type="button"
               onClick={() => onChangeQuantity(item.key, Math.max(1, item.quantity - 1))}
-              className="grid h-7 w-7 place-items-center rounded-[7px] border border-border-strong text-muted hover:border-accent hover:text-accent-hover"
+              className="grid h-9 w-9 place-items-center rounded-[7px] border border-border-strong text-muted hover:border-accent hover:text-accent-hover"
             >
               <Minus className="h-[13px] w-[13px]" />
             </button>
@@ -55,7 +55,7 @@ export function CartPanel({
             <button
               type="button"
               onClick={() => onChangeQuantity(item.key, item.quantity + 1)}
-              className="grid h-7 w-7 place-items-center rounded-[7px] border border-border-strong text-muted hover:border-accent hover:text-accent-hover"
+              className="grid h-9 w-9 place-items-center rounded-[7px] border border-border-strong text-muted hover:border-accent hover:text-accent-hover"
             >
               <Plus className="h-[13px] w-[13px]" />
             </button>

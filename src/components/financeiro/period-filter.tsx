@@ -30,12 +30,12 @@ export function PeriodFilter({ period, from, to }: { period: FinanceiroPeriod; f
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex w-fit rounded-[11px] border border-border-strong bg-surface p-[3px]">
+      <div className="flex max-w-full overflow-x-auto rounded-[11px] border border-border-strong bg-surface p-[3px]">
         {PERIODS.map((p) => (
           <Link
             key={p.value}
             href={`/financeiro?period=${p.value}`}
-            className={`rounded-[8px] px-[13px] py-[7px] text-[13px] font-medium transition-colors ${
+            className={`flex-none whitespace-nowrap rounded-[8px] px-[13px] py-[7px] text-[13px] font-medium transition-colors ${
               period === p.value ? "bg-charcoal text-white" : "text-muted hover:text-ink"
             }`}
           >

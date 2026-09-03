@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { ShoppingBag } from "lucide-react";
 
 import { formatBRL } from "@/lib/format";
 import { cartSubtotal, type CartItem } from "@/lib/order-summary";
@@ -43,6 +44,7 @@ export function NewOrderForm({ catalog }: { catalog: CatalogCategory[] }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const toast = useToast();
+  const checkoutRef = useRef<HTMLDivElement>(null);
 
   // Prefill the delivery address from the selected customer's last known
   // address, without clobbering something the attendant already typed.
@@ -102,7 +104,34 @@ export function NewOrderForm({ catalog }: { catalog: CatalogCategory[] }) {
         <ProductPicker catalog={catalog} onAdd={(item) => setCart((c) => [...c, item])} />
       </section>
 
-      <aside className="flex flex-col gap-5">
+      {/*
+        Mobile-only: while browsing the menu, the cart/checkout section sits
+        below the entire product list — this bar keeps the running total
+        visible and jumps straight to it, instead of forcing a long scroll
+        past the whole cardápio to reach "Criar pedido".
+      */}
+      {cart.length > 0 ? (
+        <div
+          className="fixed inset-x-0 bottom-[calc(4.5rem+var(--safe-bottom))] z-10 flex items-center gap-3 border-t border-border bg-white/97 px-4 py-2.5 backdrop-blur md:bottom-0 lg:hidden"
+        >
+          <ShoppingBag className="h-[18px] w-[18px] flex-none text-muted" />
+          <div className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate text-[11px] text-faint">
+              {cart.length} {cart.length === 1 ? "item" : "itens"}
+            </span>
+            <span className="text-[15px] font-semibold">{formatBRL(total)}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => checkoutRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="flex min-h-[44px] flex-none items-center justify-center rounded-[11px] bg-charcoal px-5 text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            Ver pedido
+          </button>
+        </div>
+      ) : null}
+
+      <aside ref={checkoutRef} className="flex flex-col gap-5">
         <section className="flex flex-col gap-3 rounded-[20px] border border-border bg-surface p-5">
           <h2 className="text-[15px] font-semibold tracking-tight">Cliente</h2>
           <CustomerPicker value={customer} onChange={handleCustomerChange} />

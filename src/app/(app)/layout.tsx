@@ -28,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Prisma can't compare two columns of the same row in a `where` filter,
   // so the low-stock threshold is applied in application code instead.
   const lowStock = stockLevels.filter((s) => s.quantityOnHand.lte(s.minQuantity)).length;
+  const badges = { "/pedidos": openOrders, "/estoque": lowStock || undefined, "/feedbacks": newFeedbacks || undefined };
 
   return (
     <ToastProvider>
@@ -37,10 +38,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             restaurantName={restaurant.name}
             userName={tenant.name}
             userRoleLabel={ROLE_LABELS[tenant.role] ?? tenant.role}
-            badges={{ "/pedidos": openOrders, "/estoque": lowStock || undefined, "/feedbacks": newFeedbacks || undefined }}
+            badges={badges}
           />
-          <main className="min-w-0 flex-1 pb-20 md:pb-0">{children}</main>
-          <MobileNav />
+          <main className="min-w-0 flex-1 pb-[calc(5rem+var(--safe-bottom))] md:pb-0">{children}</main>
+          <MobileNav badges={badges} />
         </div>
       </OrderNotificationsProvider>
     </ToastProvider>

@@ -64,7 +64,7 @@ export function StockItemForm({
         <span className="text-[13px] font-medium text-muted">Nome</span>
         <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Queijo mussarela" />
       </label>
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row">
         <label className="flex flex-1 flex-col gap-1.5">
           <span className="text-[13px] font-medium text-muted">Unidade</span>
           <input className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="kg, un, L…" />

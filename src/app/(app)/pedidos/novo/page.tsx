@@ -7,7 +7,7 @@ export default async function NovoPedidoPage() {
   const catalog = await getCatalogForOrderForm(tenant.restaurantId);
 
   return (
-    <div className="flex flex-col gap-6 px-[clamp(18px,2.4vw,34px)] py-7 pb-16">
+    <div className="flex flex-col gap-6 px-[clamp(18px,2.4vw,34px)] py-7 pb-32 lg:pb-16">
       <div className="flex flex-col gap-1">
         <h1 className="text-[22px] font-semibold tracking-tight">Novo pedido</h1>
         <p className="text-[13.5px] text-muted">Registre um pedido recebido por telefone ou feito no balcão.</p>

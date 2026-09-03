@@ -65,8 +65,8 @@ export function MenuPdfForm({
       {fileName ? (
         <div className="flex items-center gap-3 rounded-[13px] border border-border-strong px-4 py-3">
           <FileText className="h-[18px] w-[18px] flex-none text-muted" />
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[13px] font-medium">{fileName}</span>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate text-[13px] font-medium">{fileName}</span>
             {updatedAt ? (
               <span className="text-[11.5px] text-faint">Atualizado em {new Date(updatedAt).toLocaleDateString("pt-BR")}</span>
             ) : null}

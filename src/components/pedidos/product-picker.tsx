@@ -106,7 +106,7 @@ function ProductRow({ product, onAdd }: { product: CatalogProduct; onAdd: (item:
               <button
                 type="button"
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="grid h-8 w-8 place-items-center rounded-[8px] border border-border-strong text-muted hover:border-accent hover:text-accent-hover"
+                className="grid h-9 w-9 place-items-center rounded-[8px] border border-border-strong text-muted hover:border-accent hover:text-accent-hover"
               >
                 <Minus className="h-[14px] w-[14px]" />
               </button>
@@ -114,7 +114,7 @@ function ProductRow({ product, onAdd }: { product: CatalogProduct; onAdd: (item:
               <button
                 type="button"
                 onClick={() => setQuantity((q) => q + 1)}
-                className="grid h-8 w-8 place-items-center rounded-[8px] border border-border-strong text-muted hover:border-accent hover:text-accent-hover"
+                className="grid h-9 w-9 place-items-center rounded-[8px] border border-border-strong text-muted hover:border-accent hover:text-accent-hover"
               >
                 <Plus className="h-[14px] w-[14px]" />
               </button>

@@ -40,7 +40,7 @@ export function MovementForm({ stockItemId, unit }: { stockItemId: string; unit:
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-[9px] bg-neutral-bg p-[3px]">
           <button
             type="button"

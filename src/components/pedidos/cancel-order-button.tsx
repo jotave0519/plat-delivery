@@ -22,7 +22,7 @@ export function CancelOrderButton({ orderId }: { orderId: string }) {
       type="button"
       onClick={handleClick}
       disabled={pending}
-      className="flex items-center gap-2 rounded-[11px] border border-border-strong px-4 py-[11px] text-[13.5px] font-medium text-muted transition-colors hover:border-crit hover:text-crit disabled:opacity-50"
+      className="flex min-h-[44px] items-center gap-2 rounded-[11px] border border-border-strong px-4 py-[11px] text-[13.5px] font-medium text-muted transition-colors hover:border-crit hover:text-crit disabled:opacity-50"
     >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
       Cancelar pedido

@@ -46,18 +46,20 @@ export function OpeningHoursForm({ initial }: { initial: OpeningHours }) {
         const d = hours[day];
         return (
           <div key={day} className="flex flex-wrap items-center gap-3">
-            <span className="w-20 flex-none text-[13.5px] font-medium">{DAY_LABELS[day]}</span>
-            <label className="flex items-center gap-1.5 text-[12.5px] text-muted">
-              <input
-                type="checkbox"
-                checked={!d.closed}
-                onChange={(e) => updateDay(day, { closed: !e.target.checked })}
-                className="h-3.5 w-3.5 accent-charcoal"
-              />
-              Aberto
-            </label>
+            <div className="flex flex-none items-center gap-3">
+              <span className="w-20 flex-none text-[13.5px] font-medium">{DAY_LABELS[day]}</span>
+              <label className="flex items-center gap-1.5 text-[12.5px] text-muted">
+                <input
+                  type="checkbox"
+                  checked={!d.closed}
+                  onChange={(e) => updateDay(day, { closed: !e.target.checked })}
+                  className="h-3.5 w-3.5 accent-charcoal"
+                />
+                Aberto
+              </label>
+            </div>
             {!d.closed ? (
-              <>
+              <div className="flex flex-none items-center gap-2">
                 <input
                   type="time"
                   value={d.open}
@@ -71,7 +73,7 @@ export function OpeningHoursForm({ initial }: { initial: OpeningHours }) {
                   onChange={(e) => updateDay(day, { close: e.target.value })}
                   className="rounded-[9px] border border-border-strong px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
                 />
-              </>
+              </div>
             ) : (
               <span className="text-[12.5px] text-faint">Fechado</span>
             )}

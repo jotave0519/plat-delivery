@@ -237,9 +237,9 @@ export function ProductForm({
 
                   <div className="flex flex-col gap-2">
                     {group.items.map((item) => (
-                      <div key={item.key} className="flex items-center gap-2">
+                      <div key={item.key} className="flex flex-wrap items-center gap-2">
                         <input
-                          className={`${inputClass} flex-1`}
+                          className={`${inputClass} min-w-[140px] flex-1`}
                           placeholder="Nome do item (ex.: Bacon extra)"
                           value={item.name}
                           onChange={(e) => updateItem(group.key, item.key, { name: e.target.value })}

@@ -78,7 +78,7 @@ export function OrdersFilterBar({ status, period, q }: { status: OrderStatus | "
           ))}
         </div>
 
-        <div className="flex self-start rounded-[10px] border border-border-strong bg-surface p-[3px] lg:self-auto">
+        <div className="flex max-w-full self-start overflow-x-auto rounded-[10px] border border-border-strong bg-surface p-[3px] lg:self-auto lg:overflow-visible">
           {PERIODS.map((p) => (
             <Link
               key={p.value}

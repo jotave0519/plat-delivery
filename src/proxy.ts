@@ -22,5 +22,10 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!api|login|_next/static|_next/image|favicon.ico).*)"],
+  // manifest.webmanifest/icon/apple-icon/icon-192 are the PWA manifest +
+  // icon routes (src/app/manifest.ts, icon.tsx, apple-icon.tsx,
+  // icon-192/route.tsx) — a browser's install-prompt/home-screen fetch for
+  // these has no session, and must get the actual asset, not a redirect to
+  // an HTML login page.
+  matcher: ["/((?!api|login|manifest.webmanifest|icon-192|icon|apple-icon|_next/static|_next/image|favicon.ico).*)"],
 };

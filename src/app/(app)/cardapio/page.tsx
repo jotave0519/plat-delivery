@@ -13,24 +13,33 @@ export default async function CardapioPage() {
   return (
     <div className="flex flex-col gap-5 px-[clamp(18px,2.4vw,34px)] py-7 pb-16">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-[180px] flex-1 flex-col gap-1">
           <h1 className="text-[22px] font-semibold tracking-tight">Cardápio</h1>
           <p className="text-[13px] text-faint">Categorias, produtos e adicionais do seu cardápio.</p>
         </div>
-        <Link
-          href="/cardapio/importar"
-          className="ml-auto flex items-center gap-2 rounded-[10px] border border-border-strong px-3.5 py-2 text-[12.5px] font-medium text-muted transition-colors hover:border-accent hover:text-accent-hover"
-        >
-          <Upload className="h-[15px] w-[15px]" />
-          Importar cardápio
-        </Link>
-        <Link
-          href="/cardapio/produtos/novo"
-          className="flex items-center gap-2 rounded-[11px] bg-charcoal px-4 py-[11px] text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover active:scale-[0.98]"
-        >
-          <Plus className="h-4 w-4" />
-          Novo produto
-        </Link>
+        {/*
+          A plain `ml-auto` on one item of a `flex-wrap` line doesn't wrap
+          cleanly in Chromium at narrow widths (the auto margin's line-box
+          math causes the last item to overflow instead of dropping to a new
+          line) — grouping both actions in their own wrapping flex container
+          avoids that, confirmed via Playwright at 320px.
+        */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/cardapio/importar"
+            className="flex items-center gap-2 rounded-[10px] border border-border-strong px-3.5 py-2 text-[12.5px] font-medium text-muted transition-colors hover:border-accent hover:text-accent-hover"
+          >
+            <Upload className="h-[15px] w-[15px]" />
+            Importar cardápio
+          </Link>
+          <Link
+            href="/cardapio/produtos/novo"
+            className="flex items-center gap-2 rounded-[11px] bg-charcoal px-4 py-[11px] text-[13.5px] font-medium text-white transition-colors hover:bg-accent-hover active:scale-[0.98]"
+          >
+            <Plus className="h-4 w-4" />
+            Novo produto
+          </Link>
+        </div>
       </div>
 
       <div className="rounded-[16px] border border-dashed border-border-strong p-4">
