@@ -4,6 +4,7 @@ import { getTenant } from "@/lib/tenant";
 import { getRestaurantSettings, listUsers } from "@/server/queries/configuracoes";
 import { RestaurantForm } from "@/components/configuracoes/restaurant-form";
 import { OpeningHoursForm } from "@/components/configuracoes/opening-hours-form";
+import { NotificationSettingsForm } from "@/components/configuracoes/notification-settings-form";
 import { UsersSection } from "@/components/configuracoes/users-section";
 
 export default async function ConfiguracoesPage() {
@@ -44,6 +45,11 @@ export default async function ConfiguracoesPage() {
       <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
         <h2 className="text-[15px] font-semibold tracking-tight">Horário de funcionamento</h2>
         <OpeningHoursForm initial={restaurant.openingHours} />
+      </section>
+
+      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+        <h2 className="text-[15px] font-semibold tracking-tight">Notificações</h2>
+        <NotificationSettingsForm orderSoundEnabled={restaurant.orderSoundEnabled} />
       </section>
 
       <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">

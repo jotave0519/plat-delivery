@@ -1,19 +1,25 @@
+"use client";
+
 import Link from "next/link";
 import { Clock, MapPin } from "lucide-react";
 
 import { FLOW, TONE_CLASSES } from "@/lib/order-flow";
 import { formatBRL, formatElapsed } from "@/lib/format";
 import type { OrderListItem } from "@/server/queries/orders";
+import { useIsRecentOrder } from "@/components/realtime/order-notifications-provider";
 
 export function OrderListCard({ order }: { order: OrderListItem }) {
   const flow = FLOW[order.status];
   const tone = TONE_CLASSES[order.atrasado ? "crit" : flow.tone];
   const StatusIcon = flow.icon;
+  const isRecent = useIsRecentOrder(order.id);
 
   return (
     <Link
       href={`/pedidos/${order.id}`}
-      className="flex flex-col gap-3 rounded-[18px] border border-[#EDEFF3] bg-surface p-4 transition-shadow hover:shadow-[0_14px_30px_-22px_rgba(26,29,35,.45)]"
+      className={`flex flex-col gap-3 rounded-[18px] border bg-surface p-4 transition-shadow hover:shadow-[0_14px_30px_-22px_rgba(26,29,35,.45)] ${
+        isRecent ? "animate-rise-in border-accent shadow-[0_0_0_3px_var(--color-accent-bg)]" : "border-[#EDEFF3]"
+      }`}
     >
       <div className="flex items-center gap-2.5">
         <span className={`flex items-center gap-1.5 rounded-[8px] px-[9px] py-1 text-[11.5px] font-semibold ${tone.bg} ${tone.fg}`}>

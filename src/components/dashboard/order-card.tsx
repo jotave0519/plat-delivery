@@ -9,8 +9,10 @@ import type { QueueOrder } from "@/server/queries/dashboard";
 import type { OrderStatus } from "@/generated/prisma";
 import { advanceOrderStatus } from "@/server/actions/orders";
 import { AdvanceStatusButton } from "@/components/pedidos/advance-status-button";
+import { useIsRecentOrder } from "@/components/realtime/order-notifications-provider";
 
 export function OrderCard({ order }: { order: QueueOrder }) {
+  const isRecent = useIsRecentOrder(order.id);
   // Optimistic: the chip/button reflect the *next* status the instant the
   // button is clicked, instead of waiting for the Server Action + revalidate
   // round-trip. Safe here because the transition is a pure function of the
@@ -34,7 +36,11 @@ export function OrderCard({ order }: { order: QueueOrder }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-[18px] border border-[#EDEFF3] p-4 transition-shadow hover:shadow-[0_14px_30px_-22px_rgba(26,29,35,.45)]">
+    <div
+      className={`flex flex-col gap-3 rounded-[18px] border p-4 transition-shadow hover:shadow-[0_14px_30px_-22px_rgba(26,29,35,.45)] ${
+        isRecent ? "animate-rise-in border-accent shadow-[0_0_0_3px_var(--color-accent-bg)]" : "border-[#EDEFF3]"
+      }`}
+    >
       <div className="flex items-center gap-2.5">
         <span className={`flex items-center gap-1.5 rounded-[8px] px-[9px] py-1 text-[11.5px] font-semibold ${tone.bg} ${tone.fg}`}>
           <StatusIcon className={`h-[13px] w-[13px] ${tone.icon}`} />

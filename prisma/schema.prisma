@@ -38,6 +38,13 @@ model Restaurant {
   menuPdfFileName        String?
   menuPdfUpdatedAt       DateTime?
 
+  // ---------- Real-time order notifications ----------
+  /// Whether the notification chime plays when a new order arrives (both
+  /// WhatsApp and manual). Defaults to on — never surprises a restaurant by
+  /// silently disabling something they'd expect. Purely a client-side
+  /// playback toggle; doesn't affect whether the order itself is created.
+  orderSoundEnabled Boolean @default(true)
+
   users          User[]
   customers      Customer[]
   categories     Category[]

@@ -38,6 +38,18 @@ export async function saveRestaurantInfo(input: z.infer<typeof restaurantInfoSch
   revalidatePath("/configuracoes");
 }
 
+/** Restaurant-wide toggle for the new-order notification chime (src/lib/notification-sound.ts) — doesn't affect whether orders are created/notified in-app, only whether the sound plays. */
+export async function saveNotificationSettings(input: { orderSoundEnabled: boolean }) {
+  const tenant = await getTenant();
+  if (!MANAGER_ROLES.includes(tenant.role)) return { error: "Sem permissão para editar as notificações." };
+
+  await db.restaurant.update({
+    where: { id: tenant.restaurantId },
+    data: { orderSoundEnabled: input.orderSoundEnabled },
+  });
+  revalidatePath("/configuracoes");
+}
+
 const dayHoursSchema = z.object({ open: z.string(), close: z.string(), closed: z.boolean() });
 const openingHoursSchema = z.object(
   Object.fromEntries(WEEKDAYS.map((d) => [d, dayHoursSchema])),

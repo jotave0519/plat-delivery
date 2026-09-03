@@ -9,6 +9,7 @@ import { getTenant } from "@/lib/tenant";
 import { FLOW } from "@/lib/order-flow";
 import { priceOrderItems, nextOrderNumber } from "@/server/orders/pricing";
 import { notifyOrderStatusChange, notifyOrderCancelled } from "@/server/actions/whatsapp-order-notifications";
+import { publishNewOrder } from "@/server/realtime/order-events";
 
 function revalidateOrderPaths(orderId?: string) {
   revalidatePath("/dashboard");
@@ -222,5 +223,6 @@ export async function createManualOrder(input: CreateManualOrderInput) {
   });
 
   revalidateOrderPaths(order.id);
+  publishNewOrder(tenant.restaurantId, order);
   redirect(`/pedidos/${order.id}`);
 }

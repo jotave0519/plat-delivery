@@ -9,6 +9,7 @@ import { priceOrderItems, nextOrderNumber } from "@/server/orders/pricing";
 import { sendTextMessage, sendDocument, fetchMediaBase64 } from "@/server/integrations/evolution/client";
 import { PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
 import { extractRating } from "@/lib/feedback-rating";
+import { publishNewOrder } from "@/server/realtime/order-events";
 import {
   runWhatsappAgent,
   type AgentTool,
@@ -407,6 +408,7 @@ function buildToolHandlers(params: {
 
       await setDraftCart(emptyDraftCart());
       await db.conversation.update({ where: { id: conversationId }, data: { customerId: customer.id } });
+      publishNewOrder(restaurantId, order);
 
       return {
         ok: true,

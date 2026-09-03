@@ -1,10 +1,10 @@
 "use client";
 
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle, Bell } from "lucide-react";
 
-type ToastItem = { id: number; type: "success" | "error"; message: string };
-type ToastApi = { success: (message: string) => void; error: (message: string) => void };
+type ToastItem = { id: number; type: "success" | "error" | "info"; message: string };
+type ToastApi = { success: (message: string) => void; error: (message: string) => void; info: (message: string) => void };
 
 const ToastContext = createContext<ToastApi | null>(null);
 
@@ -29,6 +29,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const api: ToastApi = {
     success: (message) => push("success", message),
     error: (message) => push("error", message),
+    info: (message) => push("info", message),
   };
 
   return (
@@ -39,13 +40,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             className={`animate-rise-in pointer-events-auto flex max-w-[340px] items-center gap-2.5 rounded-[13px] border border-border bg-surface px-4 py-3 text-[13px] font-medium text-ink shadow-[0_14px_30px_-14px_rgba(26,29,35,.35)] ${
-              t.type === "success" ? "bg-ok-bg" : "bg-crit-bg"
+              t.type === "success" ? "bg-ok-bg" : t.type === "error" ? "bg-crit-bg" : "bg-accent-bg"
             }`}
           >
             {t.type === "success" ? (
               <CheckCircle2 className="h-[16px] w-[16px] flex-none text-ok" />
-            ) : (
+            ) : t.type === "error" ? (
               <XCircle className="h-[16px] w-[16px] flex-none text-crit" />
+            ) : (
+              <Bell className="h-[16px] w-[16px] flex-none text-accent" />
             )}
             {t.message}
           </div>

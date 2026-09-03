@@ -18,6 +18,7 @@ export type RestaurantSettings = {
   address: string | null;
   pixKey: string | null;
   openingHours: OpeningHours;
+  orderSoundEnabled: boolean;
 };
 
 export async function getRestaurantSettings(restaurantId: string): Promise<RestaurantSettings> {
@@ -29,6 +30,7 @@ export async function getRestaurantSettings(restaurantId: string): Promise<Resta
     address: restaurant.address,
     pixKey: restaurant.pixKey,
     openingHours: normalizeOpeningHours(restaurant.openingHours),
+    orderSoundEnabled: restaurant.orderSoundEnabled,
   };
 }
 

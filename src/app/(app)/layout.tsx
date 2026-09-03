@@ -4,6 +4,7 @@ import { countNewFeedbacks } from "@/server/queries/feedbacks";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { ToastProvider } from "@/components/ui/toast";
+import { OrderNotificationsProvider } from "@/components/realtime/order-notifications-provider";
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER: "Proprietário(a)",
@@ -16,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const tenant = await getTenant();
 
   const [restaurant, openOrders, stockLevels, newFeedbacks] = await Promise.all([
-    db.restaurant.findUniqueOrThrow({ where: { id: tenant.restaurantId }, select: { name: true } }),
+    db.restaurant.findUniqueOrThrow({ where: { id: tenant.restaurantId }, select: { name: true, orderSoundEnabled: true } }),
     db.order.count({ where: { restaurantId: tenant.restaurantId, status: { notIn: ["CONCLUIDO", "CANCELADO"] } } }),
     db.stockItem.findMany({
       where: { restaurantId: tenant.restaurantId },
@@ -30,16 +31,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <ToastProvider>
-      <div className="flex min-h-screen">
-        <Sidebar
-          restaurantName={restaurant.name}
-          userName={tenant.name}
-          userRoleLabel={ROLE_LABELS[tenant.role] ?? tenant.role}
-          badges={{ "/pedidos": openOrders, "/estoque": lowStock || undefined, "/feedbacks": newFeedbacks || undefined }}
-        />
-        <main className="min-w-0 flex-1 pb-20 md:pb-0">{children}</main>
-        <MobileNav />
-      </div>
+      <OrderNotificationsProvider soundEnabled={restaurant.orderSoundEnabled}>
+        <div className="flex min-h-screen">
+          <Sidebar
+            restaurantName={restaurant.name}
+            userName={tenant.name}
+            userRoleLabel={ROLE_LABELS[tenant.role] ?? tenant.role}
+            badges={{ "/pedidos": openOrders, "/estoque": lowStock || undefined, "/feedbacks": newFeedbacks || undefined }}
+          />
+          <main className="min-w-0 flex-1 pb-20 md:pb-0">{children}</main>
+          <MobileNav />
+        </div>
+      </OrderNotificationsProvider>
     </ToastProvider>
   );
 }
