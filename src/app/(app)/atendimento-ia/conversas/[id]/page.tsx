@@ -43,7 +43,16 @@ export default async function ConversationDetailPage(props: PageProps<"/atendime
           </h1>
           <p className="text-[13px] text-faint">{conversation.phoneNumber}</p>
         </div>
-        <ConversationAiToggle conversationId={conversation.id} aiEnabled={conversation.aiEnabled} />
+        <div className="flex flex-none flex-col items-end gap-1.5">
+          {conversation.handoffState === "HUMANO_ATIVO" ? (
+            <span className="rounded-full bg-warn-bg px-2.5 py-1 text-[11px] font-medium text-warn-fg">Atendimento humano ativo</span>
+          ) : conversation.handoffState === "HUMANO_EXPIRADO" ? (
+            <span className="rounded-full bg-neutral-bg px-2.5 py-1 text-[11px] font-medium text-neutral-fg">
+              Sem atividade há +2h — a IA volta na próxima mensagem
+            </span>
+          ) : null}
+          <ConversationAiToggle conversationId={conversation.id} aiEnabled={conversation.aiEnabled} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-2.5 rounded-[20px] border border-border bg-surface p-5">

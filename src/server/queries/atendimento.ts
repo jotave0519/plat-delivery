@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { computeHandoffState, type HandoffState } from "@/lib/whatsapp-handoff";
 
 export function getWhatsappConnection(restaurantId: string) {
   return db.whatsappConnection.findUnique({ where: { restaurantId } });
@@ -12,6 +13,7 @@ export type ConversationListItem = {
   contactName: string | null;
   customerName: string | null;
   aiEnabled: boolean;
+  handoffState: HandoffState;
   lastMessageAt: Date;
   lastMessagePreview: string | null;
 };
@@ -39,6 +41,7 @@ export async function listConversations(restaurantId: string, take = 30): Promis
     contactName: c.contactName,
     customerName: c.customer?.name ?? null,
     aiEnabled: c.aiEnabled,
+    handoffState: computeHandoffState(c.aiEnabled, c.lastMessageAt),
     lastMessageAt: c.lastMessageAt,
     lastMessagePreview: c.messages[0]?.content ?? null,
   }));
@@ -50,6 +53,7 @@ export type ConversationDetail = {
   contactName: string | null;
   customerName: string | null;
   aiEnabled: boolean;
+  handoffState: HandoffState;
   messages: { id: string; direction: "IN" | "OUT"; content: string; createdAt: Date }[];
 };
 
@@ -69,6 +73,7 @@ export async function getConversation(restaurantId: string, conversationId: stri
     contactName: conversation.contactName,
     customerName: conversation.customer?.name ?? null,
     aiEnabled: conversation.aiEnabled,
+    handoffState: computeHandoffState(conversation.aiEnabled, conversation.lastMessageAt),
     messages: conversation.messages,
   };
 }

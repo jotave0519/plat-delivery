@@ -26,8 +26,10 @@ export function ConversationsList({ conversations }: { conversations: Conversati
           </div>
           <div className="ml-auto flex flex-none flex-col items-end gap-0.5">
             <span className="text-[11.5px] text-faint">há {formatElapsed(minutesAgo(new Date(c.lastMessageAt)))}</span>
-            {!c.aiEnabled ? (
+            {c.handoffState === "HUMANO_ATIVO" ? (
               <span className="rounded-full bg-warn-bg px-2 py-0.5 text-[10.5px] font-medium text-warn-fg">Com atendente</span>
+            ) : c.handoffState === "HUMANO_EXPIRADO" ? (
+              <span className="rounded-full bg-neutral-bg px-2 py-0.5 text-[10.5px] font-medium text-neutral-fg">IA volta na próxima mensagem</span>
             ) : null}
           </div>
         </Link>

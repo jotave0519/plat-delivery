@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import { sendTextMessage } from "@/server/integrations/evolution/client";
+import { sendAndRecordOutboundMessage } from "@/server/integrations/evolution/outbound-message";
 import { resolveConnectedInstance } from "@/server/integrations/evolution/connection";
 import type { OrderStatus } from "@/generated/prisma";
 
@@ -36,7 +36,7 @@ export async function notifyOrderStatusChange(orderId: string) {
         status: true,
         channel: true,
         restaurantId: true,
-        customer: { select: { phone: true } },
+        customer: { select: { id: true, phone: true } },
       },
     });
     if (!order || order.channel !== "WHATSAPP_IA") return;
@@ -48,7 +48,13 @@ export async function notifyOrderStatusChange(orderId: string) {
     const instanceName = await resolveConnectedInstance(order.restaurantId);
     if (!instanceName) return;
 
-    await sendTextMessage(instanceName, phone, messageBuilder(order.number));
+    await sendAndRecordOutboundMessage({
+      restaurantId: order.restaurantId,
+      phoneNumber: phone,
+      instanceName,
+      text: messageBuilder(order.number),
+      customerId: order.customer?.id,
+    });
   } catch (err) {
     console.error("Falha ao notificar cliente sobre mudança de status do pedido:", err);
   }
@@ -58,7 +64,7 @@ export async function notifyOrderCancelled(orderId: string, reason: string | nul
   try {
     const order = await db.order.findUnique({
       where: { id: orderId },
-      select: { number: true, channel: true, restaurantId: true, customer: { select: { phone: true } } },
+      select: { number: true, channel: true, restaurantId: true, customer: { select: { id: true, phone: true } } },
     });
     if (!order || order.channel !== "WHATSAPP_IA") return;
 
@@ -72,7 +78,13 @@ export async function notifyOrderCancelled(orderId: string, reason: string | nul
       ? `Infelizmente, tivemos um imprevisto e seu pedido #${order.number} precisou ser cancelado.\n\nMotivo: ${reason}\n\nPedimos desculpas pelo transtorno.`
       : `Infelizmente, tivemos um imprevisto e seu pedido #${order.number} precisou ser cancelado. Pedimos desculpas pelo transtorno.`;
 
-    await sendTextMessage(instanceName, phone, text);
+    await sendAndRecordOutboundMessage({
+      restaurantId: order.restaurantId,
+      phoneNumber: phone,
+      instanceName,
+      text,
+      customerId: order.customer?.id,
+    });
   } catch (err) {
     console.error("Falha ao notificar cliente sobre cancelamento do pedido:", err);
   }

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import { sendTextMessage } from "@/server/integrations/evolution/client";
+import { sendAndRecordOutboundMessage } from "@/server/integrations/evolution/outbound-message";
 import { resolveConnectedInstance } from "@/server/integrations/evolution/connection";
 
 /**
@@ -39,18 +39,13 @@ export async function processDueFeedbacks(): Promise<void> {
       const greeting = firstName ? `Oi, ${firstName}!` : "Oi!";
       const text = `${greeting} 😊 Passando para saber: o que você achou do seu pedido #${feedback.order.number}? Se quiser, conta pra gente como foi — isso nos ajuda bastante!`;
 
-      await sendTextMessage(instanceName, feedback.phoneNumber, text);
-
-      const conversation = await db.conversation.upsert({
-        where: { restaurantId_phoneNumber: { restaurantId: feedback.restaurantId, phoneNumber: feedback.phoneNumber } },
-        update: {},
-        create: {
-          restaurantId: feedback.restaurantId,
-          phoneNumber: feedback.phoneNumber,
-          customerId: feedback.customerId,
-        },
+      await sendAndRecordOutboundMessage({
+        restaurantId: feedback.restaurantId,
+        phoneNumber: feedback.phoneNumber,
+        instanceName,
+        text,
+        customerId: feedback.customerId ?? undefined,
       });
-      await db.message.create({ data: { conversationId: conversation.id, direction: "OUT", content: text } });
 
       await db.feedback.update({
         where: { id: feedback.id },

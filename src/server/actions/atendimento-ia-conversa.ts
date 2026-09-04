@@ -6,9 +6,11 @@ import { db } from "@/lib/db";
 import { normalizeOpeningHours, isOpenNow, formatOpeningHoursSummary } from "@/lib/opening-hours";
 import { getCatalogForOrderForm, type CatalogCategory } from "@/server/queries/orders";
 import { priceOrderItems, nextOrderNumber } from "@/server/orders/pricing";
-import { sendTextMessage, sendDocument, fetchMediaBase64 } from "@/server/integrations/evolution/client";
+import { sendDocument, fetchMediaBase64 } from "@/server/integrations/evolution/client";
+import { sendAndRecordOutboundMessage } from "@/server/integrations/evolution/outbound-message";
 import { PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
 import { extractRating } from "@/lib/feedback-rating";
+import { HUMAN_HANDOFF_IDLE_MS } from "@/lib/whatsapp-handoff";
 import { publishNewOrder } from "@/server/realtime/order-events";
 import {
   runWhatsappAgent,
@@ -452,11 +454,10 @@ function buildToolHandlers(params: {
 async function captureFeedbackReply(params: {
   restaurantId: string;
   phoneNumber: string;
-  conversationId: string;
   instanceName: string;
   text: string;
 }): Promise<boolean> {
-  const { restaurantId, phoneNumber, conversationId, instanceName, text } = params;
+  const { restaurantId, phoneNumber, instanceName, text } = params;
 
   const pending = await db.feedback.findFirst({
     where: { restaurantId, phoneNumber, status: "SENT" },
@@ -475,12 +476,7 @@ async function captureFeedbackReply(params: {
   });
 
   const thanks = "Muito obrigado pelo retorno! 😊 Isso nos ajuda bastante.";
-  await db.message.create({ data: { conversationId, direction: "OUT", content: thanks } });
-  try {
-    await sendTextMessage(instanceName, phoneNumber, thanks);
-  } catch (err) {
-    console.error("Falha ao enviar agradecimento de feedback:", err);
-  }
+  await sendAndRecordOutboundMessage({ restaurantId, phoneNumber, instanceName, text: thanks });
 
   return true;
 }
@@ -498,11 +494,10 @@ async function captureFeedbackReply(params: {
 async function capturePixProofImage(params: {
   restaurantId: string;
   phoneNumber: string;
-  conversationId: string;
   instanceName: string;
   image: { rawMessage: unknown; mimetype: string | null; caption: string | null };
 }): Promise<boolean> {
-  const { restaurantId, phoneNumber, conversationId, instanceName, image } = params;
+  const { restaurantId, phoneNumber, instanceName, image } = params;
 
   const order = await db.order.findFirst({
     where: {
@@ -538,14 +533,48 @@ async function capturePixProofImage(params: {
     }
   }
 
-  await db.message.create({ data: { conversationId, direction: "OUT", content: reply } });
-  try {
-    await sendTextMessage(instanceName, phoneNumber, reply);
-  } catch (err) {
-    console.error("Falha ao enviar confirmação de recebimento do comprovante:", err);
-  }
+  await sendAndRecordOutboundMessage({ restaurantId, phoneNumber, instanceName, text: reply });
 
   return true;
+}
+
+/**
+ * Called from the webhook for a `fromMe: true` MESSAGES_UPSERT event with
+ * text — the connected WhatsApp number echoes back everything sent on it,
+ * automated or not, indistinguishably. A message whose whatsappMessageId
+ * already exists (recorded by sendAndRecordOutboundMessage) is our own
+ * automated send echoing back — ignored here, so it's never mistaken for a
+ * human reply. Anything else is a real person typing directly on the
+ * connected phone: recorded as history, and treated exactly like
+ * transferir_para_humano (aiEnabled: false) — the agent shouldn't also try
+ * to answer the same customer a human is actively responding to. No-op if
+ * this phone number has no Conversation yet — a human proactively messaging
+ * a number that never contacted the restaurant isn't the ordering agent's
+ * concern.
+ */
+export async function recordStaffReply(params: {
+  restaurantId: string;
+  phoneNumber: string;
+  text: string;
+  whatsappMessageId: string | null;
+}) {
+  const { restaurantId, phoneNumber, text, whatsappMessageId } = params;
+
+  if (whatsappMessageId) {
+    const existing = await db.message.findUnique({ where: { whatsappMessageId } });
+    if (existing) return; // echo of a message we sent ourselves
+  }
+
+  const conversation = await db.conversation.findUnique({ where: { restaurantId_phoneNumber: { restaurantId, phoneNumber } } });
+  if (!conversation) return;
+
+  await db.conversation.update({
+    where: { id: conversation.id },
+    data: { aiEnabled: false, lastMessageAt: new Date() },
+  });
+  await db.message.create({
+    data: { conversationId: conversation.id, direction: "OUT", content: text, whatsappMessageId: whatsappMessageId ?? undefined },
+  });
 }
 
 export async function processConversationMessage(params: {
@@ -566,9 +595,31 @@ export async function processConversationMessage(params: {
     if (existing) return;
   }
 
+  const existingConversation = await db.conversation.findUnique({
+    where: { restaurantId_phoneNumber: { restaurantId, phoneNumber } },
+  });
+
+  // Auto-resume: a handed-off conversation that's gone genuinely quiet (no
+  // message from either side) for HUMAN_HANDOFF_IDLE_MS is treated as a new
+  // contact — the agent takes this message normally instead of staying
+  // silent forever. An actively-ongoing human exchange never reaches this,
+  // since lastMessageAt keeps resetting on every message from either side
+  // (see sendAndRecordOutboundMessage and recordStaffReply below). Staff can
+  // still end a handoff immediately at any time via the manual toggle
+  // (setConversationAiEnabled) — this is only the safety net for when nobody
+  // does that.
+  const shouldAutoResume =
+    !!existingConversation &&
+    !existingConversation.aiEnabled &&
+    Date.now() - existingConversation.lastMessageAt.getTime() >= HUMAN_HANDOFF_IDLE_MS;
+
   const conversation = await db.conversation.upsert({
     where: { restaurantId_phoneNumber: { restaurantId, phoneNumber } },
-    update: { contactName: pushName ?? undefined, lastMessageAt: new Date() },
+    update: {
+      contactName: pushName ?? undefined,
+      lastMessageAt: new Date(),
+      ...(shouldAutoResume ? { aiEnabled: true } : {}),
+    },
     create: { restaurantId, phoneNumber, contactName: pushName, aiEnabled: true },
   });
 
@@ -584,7 +635,7 @@ export async function processConversationMessage(params: {
   // An inbound image is treated as a Pix payment proof (if one is expected)
   // — never as an ordering-agent turn, since the agent has no vision here.
   if (image) {
-    await capturePixProofImage({ restaurantId, phoneNumber, conversationId: conversation.id, instanceName, image });
+    await capturePixProofImage({ restaurantId, phoneNumber, instanceName, image });
     return;
   }
   if (!text) return; // nothing else to process (shouldn't happen — the webhook only forwards text-or-image)
@@ -593,7 +644,7 @@ export async function processConversationMessage(params: {
   // one — this runs regardless of aiEnabled (collecting feedback isn't the
   // ordering agent taking over, just recording data) and short-circuits
   // the rest of this turn: the ordering agent never runs for this message.
-  const handledAsFeedback = await captureFeedbackReply({ restaurantId, phoneNumber, conversationId: conversation.id, instanceName, text });
+  const handledAsFeedback = await captureFeedbackReply({ restaurantId, phoneNumber, instanceName, text });
   if (handledAsFeedback) return;
 
   if (!conversation.aiEnabled) return; // handed off to a human — the agent stays silent
@@ -639,11 +690,11 @@ export async function processConversationMessage(params: {
     reply = "Desculpe, tive um problema para responder agora. Um atendente vai continuar por aqui em breve.";
   }
 
-  await db.message.create({ data: { conversationId: conversation.id, direction: "OUT", content: reply } });
-
-  try {
-    await sendTextMessage(instanceName, phoneNumber, reply);
-  } catch (err) {
-    console.error("Falha ao enviar resposta via Evolution API:", err);
-  }
+  await sendAndRecordOutboundMessage({
+    restaurantId,
+    phoneNumber,
+    instanceName,
+    text: reply,
+    customerId: conversation.customerId ?? undefined,
+  });
 }

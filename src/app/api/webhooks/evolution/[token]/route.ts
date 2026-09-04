@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
-import { processConversationMessage } from "@/server/actions/atendimento-ia-conversa";
+import { processConversationMessage, recordStaffReply } from "@/server/actions/atendimento-ia-conversa";
 import type { Prisma } from "@/generated/prisma";
 
 /**
@@ -78,8 +78,6 @@ export async function POST(request: Request, ctx: RouteContext<"/api/webhooks/ev
       });
     } else if (eventType === "MESSAGES_UPSERT") {
       const inbound = extractInboundMessage(payload);
-      // Skip our own sent messages (echoed back by Evolution API) and
-      // anything we couldn't confidently parse — never guess a phone number.
       if (inbound && !inbound.fromMe && inbound.phoneNumber && (inbound.text || inbound.image)) {
         try {
           await processConversationMessage({
@@ -93,6 +91,22 @@ export async function POST(request: Request, ctx: RouteContext<"/api/webhooks/ev
           });
         } catch (err) {
           console.error("Falha ao processar mensagem recebida do WhatsApp:", err);
+        }
+      } else if (inbound && inbound.fromMe && inbound.phoneNumber && inbound.text) {
+        // The connected number echoes back everything sent on it — this could
+        // be our own automated send (ignored by recordStaffReply via the
+        // whatsappMessageId it already recorded) or a human typing directly
+        // on the phone (a real handoff signal). Never for images — a human
+        // manually sending a photo isn't something the agent needs to react to.
+        try {
+          await recordStaffReply({
+            restaurantId: connection.restaurantId,
+            phoneNumber: inbound.phoneNumber,
+            text: inbound.text,
+            whatsappMessageId: inbound.messageId,
+          });
+        } catch (err) {
+          console.error("Falha ao registrar mensagem enviada pela equipe/IA:", err);
         }
       }
     }
