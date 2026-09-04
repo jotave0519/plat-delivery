@@ -37,8 +37,8 @@ import type { PaymentMethod, Prisma } from "@/generated/prisma";
 
 // ---------- draft cart shape (Conversation.draftCart) ----------
 
-type DraftCartItem = { productId: string; productName: string; quantity: number; notes?: string; optionItemIds?: string[] };
-type DraftCart = {
+export type DraftCartItem = { productId: string; productName: string; quantity: number; notes?: string; optionItemIds?: string[] };
+export type DraftCart = {
   items: DraftCartItem[];
   fulfillment?: "DELIVERY" | "RETIRADA";
   address?: string;
@@ -47,11 +47,11 @@ type DraftCart = {
   customerName?: string;
 };
 
-function emptyDraftCart(): DraftCart {
+export function emptyDraftCart(): DraftCart {
   return { items: [] };
 }
 
-function readDraftCart(raw: Prisma.JsonValue | null): DraftCart {
+export function readDraftCart(raw: Prisma.JsonValue | null): DraftCart {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return emptyDraftCart();
   const v = raw as Record<string, unknown>;
   return {
@@ -64,7 +64,7 @@ function readDraftCart(raw: Prisma.JsonValue | null): DraftCart {
   };
 }
 
-function formatCatalogForPrompt(catalog: CatalogCategory[]): string {
+export function formatCatalogForPrompt(catalog: CatalogCategory[]): string {
   if (catalog.length === 0) return "(nenhum produto disponível no momento)";
   return catalog
     .map((cat) => {
@@ -86,7 +86,7 @@ function formatCatalogForPrompt(catalog: CatalogCategory[]): string {
     .join("\n\n");
 }
 
-function formatDraftCartForPrompt(cart: DraftCart): string {
+export function formatDraftCartForPrompt(cart: DraftCart): string {
   if (cart.items.length === 0 && !cart.address && !cart.paymentMethod) return "(carrinho vazio ainda)";
   const lines: string[] = [];
   if (cart.items.length > 0) {
@@ -105,14 +105,14 @@ function formatDraftCartForPrompt(cart: DraftCart): string {
 
 // ---------- tool schemas ----------
 
-const cartItemSchema = z.object({
+export const cartItemSchema = z.object({
   productId: z.string(),
   quantity: z.number().int().min(1).max(50),
   notes: z.string().optional(),
   optionItemIds: z.array(z.string()).optional(),
 });
 
-const atualizarPedidoSchema = z.object({
+export const atualizarPedidoSchema = z.object({
   items: z.array(cartItemSchema).optional(),
   fulfillment: z.enum(["DELIVERY", "RETIRADA"]).optional(),
   address: z.string().optional(),
@@ -178,9 +178,37 @@ const TOOLS: AgentTool[] = [
   },
 ];
 
-// ---------- system prompt ----------
+// ---------- shared assistant context (reused by WhatsApp and phone) ----------
 
-async function buildSystemPrompt(restaurantId: string, phoneNumber: string, draftCart: DraftCart) {
+export type AssistantContext = {
+  restaurant: {
+    name: string;
+    phone: string | null;
+    address: string | null;
+    timezone: string;
+    pixKey: string | null;
+    faqText: string | null;
+    deliveryAreasText: string | null;
+    defaultDeliveryFee: number | null;
+    acceptedPaymentMethods: PaymentMethod[];
+    menuPdfFileName: string | null;
+  };
+  catalog: CatalogCategory[];
+  hours: ReturnType<typeof normalizeOpeningHours>;
+  isOpen: boolean;
+  existingCustomer: { name: string; phone: string } | null;
+  lastDeliveryAddress: string | null;
+};
+
+/**
+ * Everything both the WhatsApp agent's and the phone agent's
+ * (src/server/actions/telefonia-ia-chamada.ts) system prompts need —
+ * restaurant info, the real catalog, opening-hours state, and customer
+ * recognition by phone. Extracted so the two channels never duplicate this
+ * business logic; each channel's prompt-builder only differs in *how* this
+ * gets phrased (WhatsApp text vs. spoken voice), never in *what* it knows.
+ */
+export async function buildAssistantContext(restaurantId: string, phoneNumber: string): Promise<AssistantContext> {
   const restaurant = await db.restaurant.findUniqueOrThrow({
     where: { id: restaurantId },
     select: {
@@ -200,12 +228,11 @@ async function buildSystemPrompt(restaurantId: string, phoneNumber: string, draf
 
   const catalog = await getCatalogForOrderForm(restaurantId);
   const hours = normalizeOpeningHours(restaurant.openingHours);
-  const open = isOpenNow(hours, restaurant.timezone);
-  const paymentMethods = restaurant.acceptedPaymentMethods.map((m) => PAYMENT_METHOD_LABELS[m] ?? m).join(", ");
+  const isOpen = isOpenNow(hours, restaurant.timezone);
 
   // Look up the real customer record (not just conversation history) so a
   // returning customer is recognized reliably even if their first order was
-  // outside the rolling message-history window loaded below.
+  // outside the rolling message-history window loaded by the caller.
   const existingCustomer = await db.customer.findFirst({
     where: { restaurantId, phone: phoneNumber.replace(/\D/g, "") },
     select: { name: true, phone: true },
@@ -217,15 +244,46 @@ async function buildSystemPrompt(restaurantId: string, phoneNumber: string, draf
         select: { address: true },
       })
     : null;
-  const customerSection = existingCustomer
-    ? `- Já cadastrado? Sim — nome: ${existingCustomer.name}, telefone: ${existingCustomer.phone}\n  Já é o mesmo número que está conversando agora, então o telefone do pedido já está resolvido — não precisa perguntar "posso usar este número?" de novo. Use esse nome e telefone automaticamente, sem perguntar de novo — só pergunte de novo se o cliente disser que quer mudar.${
-        lastOrderWithAddress?.address
-          ? `\n- Último endereço de entrega usado: ${lastOrderWithAddress.address}\n  Se o pedido for entrega, pergunte se é pra usar esse mesmo endereço antes de pedir um novo.`
+
+  return {
+    restaurant: {
+      name: restaurant.name,
+      phone: restaurant.phone,
+      address: restaurant.address,
+      timezone: restaurant.timezone,
+      pixKey: restaurant.pixKey,
+      faqText: restaurant.faqText,
+      deliveryAreasText: restaurant.deliveryAreasText,
+      defaultDeliveryFee: restaurant.defaultDeliveryFee != null ? Number(restaurant.defaultDeliveryFee) : null,
+      acceptedPaymentMethods: restaurant.acceptedPaymentMethods,
+      menuPdfFileName: restaurant.menuPdfFileName,
+    },
+    catalog,
+    hours,
+    isOpen,
+    // Non-null assertion is safe here: the query above only matches a
+    // Customer whose `phone` equals the (non-empty, non-null) digits we
+    // searched for — a match can never have a null phone.
+    existingCustomer: existingCustomer ? { name: existingCustomer.name, phone: existingCustomer.phone! } : null,
+    lastDeliveryAddress: lastOrderWithAddress?.address ?? null,
+  };
+}
+
+// ---------- system prompt (WhatsApp) ----------
+
+async function buildSystemPrompt(restaurantId: string, phoneNumber: string, draftCart: DraftCart) {
+  const ctx = await buildAssistantContext(restaurantId, phoneNumber);
+  const paymentMethods = ctx.restaurant.acceptedPaymentMethods.map((m) => PAYMENT_METHOD_LABELS[m] ?? m).join(", ");
+
+  const customerSection = ctx.existingCustomer
+    ? `- Já cadastrado? Sim — nome: ${ctx.existingCustomer.name}, telefone: ${ctx.existingCustomer.phone}\n  Já é o mesmo número que está conversando agora, então o telefone do pedido já está resolvido — não precisa perguntar "posso usar este número?" de novo. Use esse nome e telefone automaticamente, sem perguntar de novo — só pergunte de novo se o cliente disser que quer mudar.${
+        ctx.lastDeliveryAddress
+          ? `\n- Último endereço de entrega usado: ${ctx.lastDeliveryAddress}\n  Se o pedido for entrega, pergunte se é pra usar esse mesmo endereço antes de pedir um novo.`
           : ""
       }`
     : "- Já cadastrado? Não — é a primeira vez que esse número entra em contato. Pergunte o nome e confirme o telefone normalmente.";
 
-  return `Você é o atendente virtual do restaurante "${restaurant.name}", conversando pelo WhatsApp. Fale de forma natural, cordial e objetiva, como uma pessoa de verdade — nunca ofereça um menu numerado tipo "digite 1 para...".
+  return `Você é o atendente virtual do restaurante "${ctx.restaurant.name}", conversando pelo WhatsApp. Fale de forma natural, cordial e objetiva, como uma pessoa de verdade — nunca ofereça um menu numerado tipo "digite 1 para...".
 
 REGRAS INEGOCIÁVEIS:
 - Nunca invente produto, preço, disponibilidade, promoção ou informação que não esteja explicitamente no CARDÁPIO ou nas informações abaixo. Se não souber algo, diga que vai verificar com a equipe, e chame a ferramenta transferir_para_humano se o cliente insistir.
@@ -246,22 +304,138 @@ CLIENTE:
 ${customerSection}
 
 INFORMAÇÕES DO RESTAURANTE:
-- Nome: ${restaurant.name}
-- Endereço: ${restaurant.address ?? "não informado"}
-- Telefone: ${restaurant.phone ?? "não informado"}
-- Chave Pix: ${restaurant.pixKey ?? "não configurada — se o cliente escolher Pix, avise que a equipe vai enviar a chave"}
+- Nome: ${ctx.restaurant.name}
+- Endereço: ${ctx.restaurant.address ?? "não informado"}
+- Telefone: ${ctx.restaurant.phone ?? "não informado"}
+- Chave Pix: ${ctx.restaurant.pixKey ?? "não configurada — se o cliente escolher Pix, avise que a equipe vai enviar a chave"}
 - Formas de pagamento aceitas: ${paymentMethods || "não configurado"}
-- Taxa de entrega padrão: ${restaurant.defaultDeliveryFee ? `R$ ${Number(restaurant.defaultDeliveryFee).toFixed(2)}` : "consulte a equipe"}
-- Áreas de entrega: ${restaurant.deliveryAreasText ?? "não informado — se perguntarem, diga que vai confirmar com a equipe"}
-- Horário de funcionamento:\n${formatOpeningHoursSummary(hours)}
-- Está aberto agora? ${open ? "Sim" : "Não — informe educadamente que está fechado no momento e, se possível, quando reabre, mas ainda pode anotar o pedido se o cliente quiser deixar para mais tarde, deixando claro que só será preparado quando reabrir"}
-${restaurant.faqText ? `\nPERGUNTAS FREQUENTES:\n${restaurant.faqText}` : ""}
+- Taxa de entrega padrão: ${ctx.restaurant.defaultDeliveryFee != null ? `R$ ${ctx.restaurant.defaultDeliveryFee.toFixed(2)}` : "consulte a equipe"}
+- Áreas de entrega: ${ctx.restaurant.deliveryAreasText ?? "não informado — se perguntarem, diga que vai confirmar com a equipe"}
+- Horário de funcionamento:\n${formatOpeningHoursSummary(ctx.hours)}
+- Está aberto agora? ${ctx.isOpen ? "Sim" : "Não — informe educadamente que está fechado no momento e, se possível, quando reabre, mas ainda pode anotar o pedido se o cliente quiser deixar para mais tarde, deixando claro que só será preparado quando reabrir"}
+${ctx.restaurant.faqText ? `\nPERGUNTAS FREQUENTES:\n${ctx.restaurant.faqText}` : ""}
 
 CARDÁPIO DISPONÍVEL (use exatamente estes productId ao chamar atualizar_pedido):
-${formatCatalogForPrompt(catalog)}
+${formatCatalogForPrompt(ctx.catalog)}
 
 CARRINHO ATUAL DO CLIENTE:
 ${formatDraftCartForPrompt(draftCart)}`;
+}
+
+// ---------- shared order confirmation (reused by WhatsApp and phone) ----------
+
+export type ConfirmOrderResult =
+  | { error: string }
+  | { ok: true; order: Awaited<ReturnType<typeof db.order.create>>; total: number };
+
+/**
+ * The only place either channel's "confirmar_pedido" tool ever writes to
+ * Customer/Order — shared so the two agents can never drift into different
+ * pricing/validation rules. Prices are always re-derived from the database
+ * via priceOrderItems, never trusted from the model. `contactPhone` is the
+ * real number this contact is happening on (WhatsApp number or caller id) —
+ * used as the fallback phone and to detect a transcription slip in
+ * cart.phoneToUse (see the near-duplicate check below).
+ */
+export async function confirmOrderFromDraftCart(params: {
+  restaurantId: string;
+  channel: "WHATSAPP_IA" | "TELEFONE_IA";
+  contactPhone: string;
+  cart: DraftCart;
+}): Promise<ConfirmOrderResult> {
+  const { restaurantId, channel, contactPhone, cart } = params;
+
+  if (cart.items.length === 0) return { error: "O carrinho está vazio — não há o que confirmar ainda." };
+  if (!cart.fulfillment) return { error: "Falta saber se é entrega ou retirada." };
+  if (cart.fulfillment === "DELIVERY" && !cart.address?.trim()) return { error: "Falta o endereço de entrega." };
+  if (!cart.paymentMethod) return { error: "Falta saber a forma de pagamento." };
+
+  // cart.phoneToUse sometimes ends up as a phrase like "este número" instead
+  // of an actual number (the model describing the customer's answer rather
+  // than quoting digits) — stripping non-digits from that would silently
+  // produce an empty phone, breaking every downstream notification for this
+  // order. Only trust it when it actually contains something phone-shaped;
+  // otherwise fall back to the real number this contact is happening on.
+  //
+  // Also seen in testing: the model reformatting the real number (e.g.
+  // dropping the "55" country code into a local "(11) 9xxxx-xxxx" style) and
+  // slipping a digit in the process — not a deliberately different phone,
+  // just a transcription error (voice STT can do this too). Compare only the
+  // last 8 digits (the actual subscriber number, immune to country/area-code
+  // framing differences) — near-identical there means "same person",
+  // regardless of a country/area-code prefix mismatch.
+  const realPhoneDigits = contactPhone.replace(/\D/g, "");
+  const phoneToUseDigits = cart.phoneToUse?.replace(/\D/g, "") ?? "";
+  const CORE_LEN = 8;
+  const realCore = realPhoneDigits.slice(-CORE_LEN);
+  const candidateCore = phoneToUseDigits.slice(-CORE_LEN);
+  const isNearDuplicateOfRealNumber =
+    candidateCore.length === CORE_LEN && [...candidateCore].filter((ch, i) => ch !== realCore[i]).length <= 1;
+  const phone = phoneToUseDigits.length >= 8 && !isNearDuplicateOfRealNumber ? phoneToUseDigits : realPhoneDigits;
+
+  // Safety net: a recognized customer's name should already be in the cart
+  // (the prompt tells the model to reuse it), but fall back to the
+  // registered name directly if the model ever forgets to copy it over.
+  const existingCustomer = await db.customer.findFirst({ where: { restaurantId, phone } });
+  const requestedName = cart.customerName?.trim() || existingCustomer?.name;
+  if (!requestedName) return { error: "Falta o nome do cliente." };
+
+  const priced = await priceOrderItems(
+    restaurantId,
+    cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity, notes: i.notes, optionItemIds: i.optionItemIds })),
+  );
+  if ("error" in priced) return { error: priced.error };
+  const { subtotal, itemsToCreate } = priced;
+
+  const restaurant = await db.restaurant.findUniqueOrThrow({
+    where: { id: restaurantId },
+    select: { defaultDeliveryFee: true },
+  });
+  const deliveryFee = cart.fulfillment === "DELIVERY" ? Number(restaurant.defaultDeliveryFee ?? 0) : 0;
+  const total = subtotal + deliveryFee;
+
+  // A name that differs from what's on file is treated as a one-off for
+  // this order (e.g. "pode colocar outro nome nesse pedido") — it never
+  // overwrites the customer's permanent registration.
+  const nameDiffers = existingCustomer && existingCustomer.name !== requestedName;
+  const customer = existingCustomer
+    ? existingCustomer
+    : await db.customer.create({ data: { restaurantId, name: requestedName, phone } });
+
+  const number = await nextOrderNumber(restaurantId);
+
+  // PIX stays PENDENTE ("aguardando pagamento") until a proof arrives;
+  // in-person methods already tell staff exactly when they'll be paid.
+  const paymentStatus =
+    cart.paymentMethod === "PIX"
+      ? "PENDENTE"
+      : cart.fulfillment === "DELIVERY"
+        ? "PAGAMENTO_NA_ENTREGA"
+        : "PAGAMENTO_NA_RETIRADA";
+
+  const order = await db.order.create({
+    data: {
+      restaurantId,
+      customerId: customer.id,
+      number,
+      status: "NOVO",
+      channel,
+      fulfillment: cart.fulfillment,
+      paymentMethod: cart.paymentMethod,
+      paymentStatus,
+      customerNameOverride: nameDiffers ? requestedName : null,
+      address: cart.fulfillment === "DELIVERY" ? cart.address?.trim() : null,
+      subtotal,
+      deliveryFee,
+      total,
+      items: { create: itemsToCreate },
+      events: { create: [{ status: "NOVO" }] },
+    },
+  });
+
+  publishNewOrder(restaurantId, order);
+
+  return { ok: true, order, total };
 }
 
 // ---------- tool handlers ----------
@@ -317,106 +491,17 @@ function buildToolHandlers(params: {
 
     async confirmar_pedido() {
       const cart = getDraftCart();
-      if (cart.items.length === 0) return { error: "O carrinho está vazio — não há o que confirmar ainda." };
-      if (!cart.fulfillment) return { error: "Falta saber se é entrega ou retirada." };
-      if (cart.fulfillment === "DELIVERY" && !cart.address?.trim()) return { error: "Falta o endereço de entrega." };
-      if (!cart.paymentMethod) return { error: "Falta saber a forma de pagamento." };
-
-      // cart.phoneToUse sometimes ends up as a phrase like "este número"
-      // instead of an actual number (the model describing the customer's
-      // answer rather than quoting digits) — stripping non-digits from
-      // that would silently produce an empty phone, breaking every
-      // downstream WhatsApp notification for this order. Only trust it
-      // when it actually contains something phone-shaped; otherwise fall
-      // back to the real WhatsApp number this conversation is happening on.
-      //
-      // Also seen in testing: the model reformatting the real number (e.g.
-      // dropping the "55" country code into a local "(11) 9xxxx-xxxx" style)
-      // and slipping a digit in the process — not a deliberately different
-      // phone, just a transcription error. Compare only the last 8 digits
-      // (the actual subscriber number, immune to country/area-code framing
-      // differences) — near-identical there means "same person", regardless
-      // of a country/area-code prefix mismatch.
-      const realPhoneDigits = phoneNumber.replace(/\D/g, "");
-      const phoneToUseDigits = cart.phoneToUse?.replace(/\D/g, "") ?? "";
-      const CORE_LEN = 8;
-      const realCore = realPhoneDigits.slice(-CORE_LEN);
-      const candidateCore = phoneToUseDigits.slice(-CORE_LEN);
-      const isNearDuplicateOfRealNumber =
-        candidateCore.length === CORE_LEN &&
-        [...candidateCore].filter((ch, i) => ch !== realCore[i]).length <= 1;
-      const phone =
-        phoneToUseDigits.length >= 8 && !isNearDuplicateOfRealNumber ? phoneToUseDigits : realPhoneDigits;
-
-      // Safety net: a recognized customer's name should already be in the
-      // cart (the prompt tells the model to reuse it), but fall back to the
-      // registered name directly if the model ever forgets to copy it over.
-      const existingCustomer = await db.customer.findFirst({ where: { restaurantId, phone } });
-      const requestedName = cart.customerName?.trim() || existingCustomer?.name;
-      if (!requestedName) return { error: "Falta o nome do cliente." };
-
-      const priced = await priceOrderItems(
-        restaurantId,
-        cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity, notes: i.notes, optionItemIds: i.optionItemIds })),
-      );
-      if ("error" in priced) return { error: priced.error };
-      const { subtotal, itemsToCreate } = priced;
-
-      const restaurant = await db.restaurant.findUniqueOrThrow({
-        where: { id: restaurantId },
-        select: { defaultDeliveryFee: true },
-      });
-      const deliveryFee = cart.fulfillment === "DELIVERY" ? Number(restaurant.defaultDeliveryFee ?? 0) : 0;
-      const total = subtotal + deliveryFee;
-
-      // A name that differs from what's on file is treated as a one-off for
-      // this order (e.g. "pode colocar outro nome nesse pedido") — it never
-      // overwrites the customer's permanent registration.
-      const nameDiffers = existingCustomer && existingCustomer.name !== requestedName;
-      const customer = existingCustomer
-        ? existingCustomer
-        : await db.customer.create({ data: { restaurantId, name: requestedName, phone } });
-
-      const number = await nextOrderNumber(restaurantId);
-
-      // PIX stays PENDENTE ("aguardando pagamento") until a proof arrives;
-      // in-person methods already tell staff exactly when they'll be paid.
-      const paymentStatus =
-        cart.paymentMethod === "PIX"
-          ? "PENDENTE"
-          : cart.fulfillment === "DELIVERY"
-            ? "PAGAMENTO_NA_ENTREGA"
-            : "PAGAMENTO_NA_RETIRADA";
-
-      const order = await db.order.create({
-        data: {
-          restaurantId,
-          customerId: customer.id,
-          number,
-          status: "NOVO",
-          channel: "WHATSAPP_IA",
-          fulfillment: cart.fulfillment,
-          paymentMethod: cart.paymentMethod,
-          paymentStatus,
-          customerNameOverride: nameDiffers ? requestedName : null,
-          address: cart.fulfillment === "DELIVERY" ? cart.address?.trim() : null,
-          subtotal,
-          deliveryFee,
-          total,
-          items: { create: itemsToCreate },
-          events: { create: [{ status: "NOVO" }] },
-        },
-      });
+      const result = await confirmOrderFromDraftCart({ restaurantId, channel: "WHATSAPP_IA", contactPhone: phoneNumber, cart });
+      if ("error" in result) return result;
 
       await setDraftCart(emptyDraftCart());
-      await db.conversation.update({ where: { id: conversationId }, data: { customerId: customer.id } });
-      publishNewOrder(restaurantId, order);
+      await db.conversation.update({ where: { id: conversationId }, data: { customerId: result.order.customerId ?? undefined } });
 
       return {
         ok: true,
-        numeroPedido: order.number,
-        total: total.toFixed(2),
-        mensagem: `Pedido #${order.number} criado com sucesso.`,
+        numeroPedido: result.order.number,
+        total: result.total.toFixed(2),
+        mensagem: `Pedido #${result.order.number} criado com sucesso.`,
       };
     },
 

@@ -34,6 +34,13 @@ const envSchema = z.object({
   // Opcional pelo mesmo motivo que as vars da Evolution API: sem ela, cada
   // funcionalidade mostra um erro amigável em vez de quebrar o app no boot.
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
+
+  // Recepcionista de IA por telefone (ElevenLabs + Twilio) — mesmo padrão
+  // opcional das demais integrações. ELEVENLABS_WEBHOOK_SECRET é um segredo
+  // nosso (não da ElevenLabs) verificado nos webhooks que ela chama de
+  // volta, mesmo papel de EVOLUTION_WEBHOOK_SECRET.
+  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  ELEVENLABS_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 function loadEnv() {
@@ -52,3 +59,6 @@ export const isEvolutionApiConfigured = Boolean(env.EVOLUTION_API_URL && env.EVO
 
 /** True once any Claude-API-backed feature (menu import, WhatsApp agent) has a real key configured. */
 export const isAnthropicConfigured = Boolean(env.ANTHROPIC_API_KEY);
+
+/** True once the phone-receptionist integration has real credentials configured. */
+export const isElevenLabsConfigured = Boolean(env.ELEVENLABS_API_KEY && env.ELEVENLABS_WEBHOOK_SECRET);

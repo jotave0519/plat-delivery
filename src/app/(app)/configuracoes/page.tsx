@@ -2,9 +2,11 @@ import { Lock } from "lucide-react";
 
 import { getTenant } from "@/lib/tenant";
 import { getRestaurantSettings, listUsers } from "@/server/queries/configuracoes";
+import { getPhoneAgentSettings } from "@/server/queries/telefonia";
 import { RestaurantForm } from "@/components/configuracoes/restaurant-form";
 import { OpeningHoursForm } from "@/components/configuracoes/opening-hours-form";
 import { NotificationSettingsForm } from "@/components/configuracoes/notification-settings-form";
+import { PhoneAgentSettingsForm } from "@/components/configuracoes/phone-agent-settings-form";
 import { UsersSection } from "@/components/configuracoes/users-section";
 
 export default async function ConfiguracoesPage() {
@@ -25,9 +27,10 @@ export default async function ConfiguracoesPage() {
     );
   }
 
-  const [restaurant, users] = await Promise.all([
+  const [restaurant, users, phoneAgentSettings] = await Promise.all([
     getRestaurantSettings(tenant.restaurantId),
     listUsers(tenant.restaurantId),
+    getPhoneAgentSettings(tenant.restaurantId),
   ]);
 
   return (
@@ -50,6 +53,11 @@ export default async function ConfiguracoesPage() {
       <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
         <h2 className="text-[15px] font-semibold tracking-tight">Notificações</h2>
         <NotificationSettingsForm orderSoundEnabled={restaurant.orderSoundEnabled} />
+      </section>
+
+      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+        <h2 className="text-[15px] font-semibold tracking-tight">Recepcionista por telefone (IA)</h2>
+        <PhoneAgentSettingsForm settings={phoneAgentSettings} />
       </section>
 
       <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">

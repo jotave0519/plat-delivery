@@ -3,8 +3,10 @@ import { Lock } from "lucide-react";
 import { getTenant } from "@/lib/tenant";
 import { getWhatsappConnection, listConversations } from "@/server/queries/atendimento";
 import { getAiSettings } from "@/server/queries/configuracoes";
+import { listPhoneCalls } from "@/server/queries/telefonia";
 import { WhatsappConnectionCard } from "@/components/atendimento/whatsapp-connection-card";
 import { ConversationsList } from "@/components/atendimento/conversations-list";
+import { PhoneCallsList } from "@/components/atendimento/phone-calls-list";
 import { AiSettingsForm } from "@/components/configuracoes/ai-settings-form";
 import { MenuPdfForm } from "@/components/configuracoes/menu-pdf-form";
 
@@ -26,10 +28,11 @@ export default async function AtendimentoIaPage() {
     );
   }
 
-  const [connection, aiSettings, conversations] = await Promise.all([
+  const [connection, aiSettings, conversations, phoneCalls] = await Promise.all([
     getWhatsappConnection(tenant.restaurantId),
     getAiSettings(tenant.restaurantId),
     listConversations(tenant.restaurantId),
+    listPhoneCalls(tenant.restaurantId),
   ]);
 
   return (
@@ -70,6 +73,11 @@ export default async function AtendimentoIaPage() {
       <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
         <h2 className="text-[15px] font-semibold tracking-tight">Conversas recentes</h2>
         <ConversationsList conversations={conversations} />
+      </section>
+
+      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+        <h2 className="text-[15px] font-semibold tracking-tight">Ligações recentes</h2>
+        <PhoneCallsList calls={phoneCalls} />
       </section>
     </div>
   );

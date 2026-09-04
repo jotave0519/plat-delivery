@@ -133,6 +133,7 @@ export const CHANNEL_LABELS: Record<string, string> = {
   MARKETPLACE: "Marketplace",
   WHATSAPP_IA: "WhatsApp · IA",
   TELEFONE: "Telefone",
+  TELEFONE_IA: "Telefone · IA",
   BALCAO: "Balcão",
 };
 

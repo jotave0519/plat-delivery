@@ -45,6 +45,20 @@ model Restaurant {
   /// playback toggle; doesn't affect whether the order itself is created.
   orderSoundEnabled Boolean @default(true)
 
+  // ---------- Recepcionista de IA por telefone (ElevenLabs + Twilio) ----------
+  // Same "additive, off by default" shape as the WhatsApp agent settings
+  // above — an existing restaurant is unaffected until an owner explicitly
+  // turns this on. The Twilio number itself is provisioned outside this
+  // platform (regulatory verification for a Brazilian number is done
+  // directly with Twilio) — phoneAgentTwilioNumber just records which
+  // number was linked, for display in Configurações.
+  phoneAgentEnabled             Boolean @default(false)
+  phoneAgentElevenLabsAgentId   String?
+  phoneAgentTwilioNumber        String?
+  /// Where transfer_to_number (ElevenLabs' built-in system tool) sends the
+  /// call when the AI hands off to a human — a staff member's real phone.
+  phoneAgentHumanTransferNumber String?
+
   users          User[]
   customers      Customer[]
   categories     Category[]
@@ -55,6 +69,7 @@ model Restaurant {
   whatsappConnection WhatsappConnection?
   conversations  Conversation[]
   feedbacks      Feedback[]
+  phoneCalls     PhoneCall[]
 }
 
 enum Role {
@@ -98,6 +113,7 @@ model Customer {
   orders        Order[]
   conversations Conversation[]
   feedbacks     Feedback[]
+  phoneCalls    PhoneCall[]
 
   @@index([restaurantId])
   @@unique([restaurantId, phone])
@@ -181,7 +197,10 @@ enum OrderChannel {
   CARDAPIO_PROPRIO
   MARKETPLACE
   WHATSAPP_IA
+  /// Pedido manual anotado por um atendente humano ao telefone — não confundir
+  /// com TELEFONE_IA (a recepcionista de IA por telefone), abaixo.
   TELEFONE
+  TELEFONE_IA
   BALCAO
 }
 
@@ -247,6 +266,7 @@ model Order {
   items      OrderItem[]
   events     OrderEvent[]
   feedback   Feedback?
+  phoneCall  PhoneCall?
 
   @@index([restaurantId])
   @@index([restaurantId, status])
@@ -506,4 +526,47 @@ model Feedback {
 
   @@index([restaurantId])
   @@index([status, dueAt])
+}
+
+// ---------- Recepcionista de IA por telefone (ElevenLabs + Twilio) ----------
+//
+// One PhoneCall per phone call (not per phone number — a call is a bounded
+// session, unlike a WhatsApp Conversation that persists forever). Mirrors
+// Conversation/Message's role for the WhatsApp agent: draftCart is the same
+// shape/logic, rewritten whole by the tool handlers in
+// src/server/actions/telefonia-ia-chamada.ts, never diffed incrementally.
+// elevenLabsConversationId is what correlates every tool-webhook call during
+// the same live call back to this row (passed back to ElevenLabs as a
+// dynamic variable at call start, then echoed in every subsequent tool
+// call's headers — see the conversation-initiation webhook route).
+
+enum PhoneCallStatus {
+  EM_ANDAMENTO
+  CONCLUIDA
+  TRANSFERIDA
+  FALHA
+}
+
+model PhoneCall {
+  id                       String          @id @default(cuid())
+  restaurantId             String
+  callerPhone              String
+  calledNumber             String
+  elevenLabsConversationId String          @unique
+  customerId               String?
+  status                   PhoneCallStatus @default(EM_ANDAMENTO)
+  draftCart                Json?
+  orderId                  String?         @unique
+  transferredToHuman       Boolean         @default(false)
+  errorNote                String?
+  startedAt                DateTime        @default(now())
+  endedAt                  DateTime?
+  durationSeconds          Int?
+  createdAt                DateTime        @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+  order      Order?     @relation(fields: [orderId], references: [id])
+
+  @@index([restaurantId])
 }
