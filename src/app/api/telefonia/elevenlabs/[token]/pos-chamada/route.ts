@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { finishPhoneCall } from "@/server/actions/telefonia-ia-chamada";
+import { registrarLigacaoPerdida } from "@/server/actions/recuperacao-ligacao";
 
 /**
  * ElevenLabs' post-call webhook — fired after the call ends. Records
@@ -29,11 +30,22 @@ export async function POST(request: Request, ctx: RouteContext<"/api/telefonia/e
   const conversationId = typeof p.conversation_id === "string" ? p.conversation_id : null;
   if (!conversationId) return NextResponse.json({ error: "missing conversation_id" }, { status: 400 });
 
-  const call = await db.phoneCall.findUnique({ where: { elevenLabsConversationId: conversationId }, select: { id: true } });
+  const call = await db.phoneCall.findUnique({
+    where: { elevenLabsConversationId: conversationId },
+    select: { id: true, restaurantId: true, callerPhone: true },
+  });
   if (!call) return NextResponse.json({ received: true });
 
   const durationSeconds = typeof p.duration_seconds === "number" ? p.duration_seconds : undefined;
   await finishPhoneCall(call.id, { durationSeconds });
+
+  // The call connected but ElevenLabs' own analysis flagged it as not
+  // resolved — same recovery treatment as a call that never connected at
+  // all (call_initiation_failure, handled by the sibling falha-chamada route).
+  const analysis = p.analysis as Record<string, unknown> | undefined;
+  if (analysis && analysis.call_successful === false) {
+    await registrarLigacaoPerdida({ restaurantId: call.restaurantId, callerPhone: call.callerPhone, motivo: "call_successful=false" });
+  }
 
   return NextResponse.json({ received: true });
 }

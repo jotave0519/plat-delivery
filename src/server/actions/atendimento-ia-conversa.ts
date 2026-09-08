@@ -8,6 +8,8 @@ import { getCatalogForOrderForm, type CatalogCategory } from "@/server/queries/o
 import { priceOrderItems, nextOrderNumber } from "@/server/orders/pricing";
 import { sendDocument, fetchMediaBase64 } from "@/server/integrations/evolution/client";
 import { sendAndRecordOutboundMessage } from "@/server/integrations/evolution/outbound-message";
+import { captureReviewApprovalReply } from "@/server/actions/avaliacoes";
+import { findExistingCustomerByPhone } from "@/lib/customer-lookup";
 import { PAYMENT_METHOD_LABELS } from "@/lib/order-flow";
 import { extractRating } from "@/lib/feedback-rating";
 import { HUMAN_HANDOFF_IDLE_MS } from "@/lib/whatsapp-handoff";
@@ -233,10 +235,7 @@ export async function buildAssistantContext(restaurantId: string, phoneNumber: s
   // Look up the real customer record (not just conversation history) so a
   // returning customer is recognized reliably even if their first order was
   // outside the rolling message-history window loaded by the caller.
-  const existingCustomer = await db.customer.findFirst({
-    where: { restaurantId, phone: phoneNumber.replace(/\D/g, "") },
-    select: { name: true, phone: true },
-  });
+  const existingCustomer = await findExistingCustomerByPhone(restaurantId, phoneNumber);
   const lastOrderWithAddress = existingCustomer
     ? await db.order.findFirst({
         where: { restaurantId, customer: { phone: existingCustomer.phone }, address: { not: null } },
@@ -261,10 +260,7 @@ export async function buildAssistantContext(restaurantId: string, phoneNumber: s
     catalog,
     hours,
     isOpen,
-    // Non-null assertion is safe here: the query above only matches a
-    // Customer whose `phone` equals the (non-empty, non-null) digits we
-    // searched for — a match can never have a null phone.
-    existingCustomer: existingCustomer ? { name: existingCustomer.name, phone: existingCustomer.phone! } : null,
+    existingCustomer,
     lastDeliveryAddress: lastOrderWithAddress?.address ?? null,
   };
 }
@@ -731,6 +727,12 @@ export async function processConversationMessage(params: {
   // the rest of this turn: the ordering agent never runs for this message.
   const handledAsFeedback = await captureFeedbackReply({ restaurantId, phoneNumber, instanceName, text });
   if (handledAsFeedback) return;
+
+  // Same short-circuit shape, for Agente 1 (avaliações no Google) — the
+  // owner approving/editing a negative-review draft is not a customer
+  // placing an order, and must never reach the ordering agent below.
+  const handledAsReviewApproval = await captureReviewApprovalReply({ restaurantId, phoneNumber, instanceName, text });
+  if (handledAsReviewApproval) return;
 
   if (!conversation.aiEnabled) return; // handed off to a human — the agent stays silent
 

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { startPhoneCall } from "@/server/actions/telefonia-ia-chamada";
+import { startCall as startGenericAttendanceCall } from "@/server/actions/atendimento-generico-ia-chamada";
 
 /**
  * ElevenLabs' conversation-initiation webhook — called when a call reaches
@@ -43,7 +44,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/telefonia/e
 
   const restaurant = await db.restaurant.findFirst({
     where: { phoneAgentTwilioNumber: calledNumber, phoneAgentEnabled: true },
-    select: { id: true },
+    select: { id: true, phoneAgentDomain: true },
   });
 
   if (!restaurant) {
@@ -57,12 +58,24 @@ export async function POST(request: Request, ctx: RouteContext<"/api/telefonia/e
     });
   }
 
-  const { callId, systemPrompt, firstMessage } = await startPhoneCall({
-    restaurantId: restaurant.id,
-    callerPhone: callerId,
-    calledNumber,
-    elevenLabsConversationId: conversationId,
-  });
+  // Which module builds this call's prompt — the only place this decision
+  // is made (the tool-call webhook never needs it: tool names are already
+  // unambiguous per domain). Existing tenants default to PEDIDO, so this
+  // never changes behavior for a restaurant that hasn't explicitly switched.
+  const { callId, systemPrompt, firstMessage } =
+    restaurant.phoneAgentDomain === "ATENDIMENTO_GENERICO"
+      ? await startGenericAttendanceCall({
+          restaurantId: restaurant.id,
+          callerPhone: callerId,
+          calledNumber,
+          elevenLabsConversationId: conversationId,
+        })
+      : await startPhoneCall({
+          restaurantId: restaurant.id,
+          callerPhone: callerId,
+          calledNumber,
+          elevenLabsConversationId: conversationId,
+        });
 
   return NextResponse.json({
     type: "conversation_initiation_client_data",

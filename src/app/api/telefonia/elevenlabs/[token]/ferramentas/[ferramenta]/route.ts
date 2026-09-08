@@ -2,20 +2,29 @@ import { NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
 import { handleAtualizarPedido, handleConfirmarPedido, handleTransferirParaHumano } from "@/server/actions/telefonia-ia-chamada";
+import {
+  handleBuscarHorariosDisponiveis,
+  handleAgendarHorario,
+  handleQualificarLead,
+} from "@/server/actions/atendimento-generico-ia-chamada";
 
 /**
- * One route for all three phone-agent tools (atualizar-pedido,
- * confirmar-pedido, transferir-para-humano) — the URL segment picks the
- * handler, matching exactly the tool names ElevenLabs is configured to call
- * (see src/server/integrations/elevenlabs/client.ts's toolDefinition, which
- * builds these same URLs). Each handler reuses the shared order/cart logic
- * from src/server/actions/telefonia-ia-chamada.ts — this route is only the
- * HTTP boundary (auth, call-id header, JSON in/out).
+ * One route for every phone-agent tool, across both domains (PEDIDO and
+ * ATENDIMENTO_GENERICO) — the URL segment picks the handler, matching
+ * exactly the tool names each domain's agent is configured with (see
+ * src/server/integrations/elevenlabs/client.ts's webhookToolDefinition).
+ * No domain check is needed here: a PEDIDO agent is never configured with
+ * "agendar-horario" as one of its tools, and vice-versa, so the tool name
+ * alone is unambiguous. "transferir-para-humano" is the one name shared by
+ * both domains, reusing the exact same (domain-agnostic) handler.
  */
 const HANDLERS: Record<string, (callId: string, input: unknown) => Promise<unknown>> = {
   "atualizar-pedido": (callId, input) => handleAtualizarPedido(callId, input),
   "confirmar-pedido": (callId) => handleConfirmarPedido(callId),
   "transferir-para-humano": (callId) => handleTransferirParaHumano(callId),
+  "buscar-horarios-disponiveis": (callId, input) => handleBuscarHorariosDisponiveis(callId, input),
+  "agendar-horario": (callId, input) => handleAgendarHorario(callId, input),
+  "qualificar-lead": (callId, input) => handleQualificarLead(callId, input),
 };
 
 export async function POST(
