@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getTenant } from "@/lib/tenant";
 import { countNewFeedbacks } from "@/server/queries/feedbacks";
+import { getVisibleNavHrefs } from "@/lib/nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { ToastProvider } from "@/components/ui/toast";
@@ -17,7 +18,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const tenant = await getTenant();
 
   const [restaurant, openOrders, stockLevels, newFeedbacks] = await Promise.all([
-    db.restaurant.findUniqueOrThrow({ where: { id: tenant.restaurantId }, select: { name: true, orderSoundEnabled: true } }),
+    db.restaurant.findUniqueOrThrow({
+      where: { id: tenant.restaurantId },
+      select: { name: true, orderSoundEnabled: true, whatsappAgentDomain: true },
+    }),
     db.order.count({ where: { restaurantId: tenant.restaurantId, status: { notIn: ["CONCLUIDO", "CANCELADO"] } } }),
     db.stockItem.findMany({
       where: { restaurantId: tenant.restaurantId },
@@ -29,6 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // so the low-stock threshold is applied in application code instead.
   const lowStock = stockLevels.filter((s) => s.quantityOnHand.lte(s.minQuantity)).length;
   const badges = { "/pedidos": openOrders, "/estoque": lowStock || undefined, "/feedbacks": newFeedbacks || undefined };
+  const visibleHrefs = getVisibleNavHrefs(restaurant);
 
   return (
     <ToastProvider>
@@ -39,9 +44,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             userName={tenant.name}
             userRoleLabel={ROLE_LABELS[tenant.role] ?? tenant.role}
             badges={badges}
+            visibleHrefs={visibleHrefs}
           />
           <main className="min-w-0 flex-1 pb-[calc(5rem+var(--safe-bottom))] md:pb-0">{children}</main>
-          <MobileNav badges={badges} />
+          <MobileNav badges={badges} visibleHrefs={visibleHrefs} />
         </div>
       </OrderNotificationsProvider>
     </ToastProvider>
