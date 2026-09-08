@@ -41,6 +41,16 @@ const envSchema = z.object({
   // volta, mesmo papel de EVOLUTION_WEBHOOK_SECRET.
   ELEVENLABS_API_KEY: z.string().min(1).optional(),
   ELEVENLABS_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+  // Agente de avaliações no Google (Agente 1) — credenciais globais, não
+  // por tenant: uma única conta Google (modelo de agência) gerencia o
+  // perfil de todos os clientes, cada um selecionado por
+  // Restaurant.reviewAgentGoogleLocationId. O refresh token é obtido uma
+  // vez, manualmente, via consentimento OAuth dessa conta gerente.
+  GOOGLE_BUSINESS_PROFILE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_BUSINESS_PROFILE_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_BUSINESS_PROFILE_REFRESH_TOKEN: z.string().min(1).optional(),
+  GOOGLE_BUSINESS_PROFILE_ACCOUNT_ID: z.string().min(1).optional(),
 });
 
 function loadEnv() {
@@ -62,3 +72,11 @@ export const isAnthropicConfigured = Boolean(env.ANTHROPIC_API_KEY);
 
 /** True once the phone-receptionist integration has real credentials configured. */
 export const isElevenLabsConfigured = Boolean(env.ELEVENLABS_API_KEY && env.ELEVENLABS_WEBHOOK_SECRET);
+
+/** True once the Google review agent has real OAuth credentials configured. */
+export const isGoogleBusinessProfileConfigured = Boolean(
+  env.GOOGLE_BUSINESS_PROFILE_CLIENT_ID &&
+    env.GOOGLE_BUSINESS_PROFILE_CLIENT_SECRET &&
+    env.GOOGLE_BUSINESS_PROFILE_REFRESH_TOKEN &&
+    env.GOOGLE_BUSINESS_PROFILE_ACCOUNT_ID,
+);

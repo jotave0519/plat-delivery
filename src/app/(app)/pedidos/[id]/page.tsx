@@ -5,10 +5,12 @@ import { MapPin, Phone, StickyNote, Receipt } from "lucide-react";
 import { getTenant } from "@/lib/tenant";
 import { getOrderDetail } from "@/server/queries/orders";
 import { confirmPayment } from "@/server/actions/orders";
+import { getReviewRequestLogForOrder } from "@/server/queries/avaliacoes";
 import { FLOW, TONE_CLASSES, CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_IS_PAID } from "@/lib/order-flow";
 import { formatBRL } from "@/lib/format";
 import { OrderStatusHeader } from "@/components/pedidos/order-status-header";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import { RequestReviewButton } from "@/components/pedidos/request-review-button";
 
 function formatDateTime(date: Date) {
   return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -19,6 +21,9 @@ export default async function OrderDetailPage(props: PageProps<"/pedidos/[id]">)
   const tenant = await getTenant();
   const order = await getOrderDetail(tenant.restaurantId, id);
   if (!order) notFound();
+
+  const canRequestReview = order.status === "CONCLUIDO" && !!order.customer?.phone;
+  const reviewRequestLog = canRequestReview ? await getReviewRequestLogForOrder(order.id) : null;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5 px-[clamp(18px,2.4vw,34px)] py-7 pb-16">
@@ -108,6 +113,15 @@ export default async function OrderDetailPage(props: PageProps<"/pedidos/[id]">)
                 </span>
               ) : null}
             </div>
+            {canRequestReview ? (
+              reviewRequestLog ? (
+                <p className="mt-1 text-[12.5px] text-faint">
+                  {reviewRequestLog.sentAt ? "Pedido de avaliação já enviado." : "Pedido de avaliação agendado."}
+                </p>
+              ) : (
+                <RequestReviewButton orderId={order.id} phoneNumber={order.customer!.phone!} />
+              )
+            ) : null}
           </section>
 
           <section className="flex flex-col gap-2.5 rounded-[20px] border border-border bg-surface p-5 text-[13.5px]">
