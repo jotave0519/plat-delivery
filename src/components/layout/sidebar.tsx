@@ -13,6 +13,12 @@ type SidebarProps = {
   userName: string;
   userRoleLabel: string;
   badges: Partial<Record<string, number>>;
+  /// Defaults to every item's href — pass a pre-filtered list
+  /// (getVisibleNavHrefs) to hide items that don't apply to this tenant's
+  /// business type. Plain strings, not NavItem[] — icons (Lucide components)
+  /// can't cross the Server->Client prop boundary; NAV_ITEMS is imported
+  /// here directly instead, same as before this prop existed.
+  visibleHrefs?: string[];
 };
 
 function initialsOf(name: string) {
@@ -20,7 +26,8 @@ function initialsOf(name: string) {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
-export function Sidebar({ restaurantName, userName, userRoleLabel, badges }: SidebarProps) {
+export function Sidebar({ restaurantName, userName, userRoleLabel, badges, visibleHrefs }: SidebarProps) {
+  const items = visibleHrefs ? NAV_ITEMS.filter((item) => visibleHrefs.includes(item.href)) : NAV_ITEMS;
   const pathname = usePathname();
 
   return (
@@ -36,7 +43,7 @@ export function Sidebar({ restaurantName, userName, userRoleLabel, badges }: Sid
       </div>
 
       <nav className="flex flex-col gap-0.5">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
           const badge = badges[item.href];

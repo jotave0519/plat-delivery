@@ -15,12 +15,23 @@ import { MobileMoreSheet } from "@/components/layout/mobile-more-sheet";
 // (where several items were only reachable by dragging sideways).
 const PRIMARY_HREFS = ["/dashboard", "/pedidos", "/cardapio", "/clientes"];
 
-export function MobileNav({ badges = {} }: { badges?: Partial<Record<string, number>> }) {
+type MobileNavProps = {
+  badges?: Partial<Record<string, number>>;
+  /// Defaults to every item's href — pass a pre-filtered list
+  /// (getVisibleNavHrefs) to hide items that don't apply to this tenant's
+  /// business type. Plain strings, not NavItem[] — icons (Lucide components)
+  /// can't cross the Server->Client prop boundary; NAV_ITEMS is imported
+  /// here directly instead, same as before this prop existed.
+  visibleHrefs?: string[];
+};
+
+export function MobileNav({ badges = {}, visibleHrefs }: MobileNavProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const primaryItems = NAV_ITEMS.filter((item) => PRIMARY_HREFS.includes(item.href));
-  const moreItems = NAV_ITEMS.filter((item) => !PRIMARY_HREFS.includes(item.href));
+  const items = visibleHrefs ? NAV_ITEMS.filter((item) => visibleHrefs.includes(item.href)) : NAV_ITEMS;
+  const primaryItems = items.filter((item) => PRIMARY_HREFS.includes(item.href));
+  const moreItems = items.filter((item) => !PRIMARY_HREFS.includes(item.href));
   const moreActive = moreItems.some((item) => pathname === item.href || pathname.startsWith(item.href + "/"));
   const moreBadgeTotal = moreItems.reduce((sum, item) => sum + (badges[item.href] ?? 0), 0);
 
