@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { processConversationMessage, recordStaffReply } from "@/server/actions/atendimento-ia-conversa";
+import { processDespachoMessage } from "@/server/actions/despacho-ia-conversa";
+import { handleTecnicoReply } from "@/server/actions/despacho-dispatch";
+import { processOrcamentoMessage } from "@/server/actions/orcamento-ia-conversa";
+import { processLocacaoMessage } from "@/server/actions/locacao-ia-conversa";
 import type { Prisma } from "@/generated/prisma";
 
 /**
@@ -44,7 +48,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/webhooks/ev
   const eventType = (extractString(payload, "event") ?? "unknown").toUpperCase().replace(/\./g, "_");
 
   const connection = instanceName
-    ? await db.whatsappConnection.findUnique({ where: { instanceName }, select: { restaurantId: true } })
+    ? await db.whatsappConnection.findUnique({
+        where: { instanceName },
+        select: { restaurantId: true, restaurant: { select: { whatsappAgentDomain: true } } },
+      })
     : null;
 
   await db.whatsappWebhookEvent.create({
@@ -78,7 +85,67 @@ export async function POST(request: Request, ctx: RouteContext<"/api/webhooks/ev
       });
     } else if (eventType === "MESSAGES_UPSERT") {
       const inbound = extractInboundMessage(payload);
-      if (inbound && !inbound.fromMe && inbound.phoneNumber && (inbound.text || inbound.image)) {
+      const domain = connection.restaurant.whatsappAgentDomain;
+
+      if (inbound && !inbound.fromMe && inbound.phoneNumber && domain === "DESPACHO" && inbound.text) {
+        // A despacho-type tenant never sells food — mutually exclusive with
+        // the ordering agent below. A técnico's own number replying here
+        // ("aceito"/"cheguei"/"concluído") is staff, not a customer, so it's
+        // checked and routed separately, before the customer-facing pipeline.
+        try {
+          const tecnico = await db.tecnicoDisponibilidade.findFirst({
+            where: { restaurantId: connection.restaurantId, telefone: inbound.phoneNumber },
+            select: { id: true },
+          });
+          if (tecnico) {
+            await handleTecnicoReply({ restaurantId: connection.restaurantId, tecnicoId: tecnico.id, text: inbound.text, instanceName });
+          } else {
+            await processDespachoMessage({
+              restaurantId: connection.restaurantId,
+              phoneNumber: inbound.phoneNumber,
+              pushName: inbound.pushName,
+              text: inbound.text,
+              whatsappMessageId: inbound.messageId,
+              instanceName,
+            });
+          }
+        } catch (err) {
+          console.error("Falha ao processar mensagem recebida do agente de despacho:", err);
+        }
+      } else if (inbound && !inbound.fromMe && inbound.phoneNumber && domain === "ORCAMENTO" && inbound.text) {
+        // Same isolation as despacho above — a quoting-only tenant never
+        // sells food and has no técnico concept, so this branch never needs
+        // the staff-phone check the despacho branch does.
+        try {
+          await processOrcamentoMessage({
+            restaurantId: connection.restaurantId,
+            phoneNumber: inbound.phoneNumber,
+            pushName: inbound.pushName,
+            text: inbound.text,
+            whatsappMessageId: inbound.messageId,
+            instanceName,
+          });
+        } catch (err) {
+          console.error("Falha ao processar mensagem recebida do agente de orçamento:", err);
+        }
+      } else if (inbound && !inbound.fromMe && inbound.phoneNumber && domain === "LOCACAO" && (inbound.text || inbound.image || inbound.document)) {
+        // No staff-phone check here (unlike despacho) — this fatia has no
+        // corretor accept/decline handshake, availability is checked
+        // programmatically instead.
+        try {
+          await processLocacaoMessage({
+            restaurantId: connection.restaurantId,
+            phoneNumber: inbound.phoneNumber,
+            pushName: inbound.pushName,
+            text: inbound.text,
+            media: inbound.image ?? inbound.document,
+            whatsappMessageId: inbound.messageId,
+            instanceName,
+          });
+        } catch (err) {
+          console.error("Falha ao processar mensagem recebida do agente de locação:", err);
+        }
+      } else if (inbound && !inbound.fromMe && inbound.phoneNumber && domain === "PEDIDO" && (inbound.text || inbound.image)) {
         try {
           await processConversationMessage({
             restaurantId: connection.restaurantId,
@@ -123,6 +190,8 @@ type InboundMessage = {
   text: string | null;
   /** Present when the message is an image (e.g. a Pix payment proof) — the raw {key, message} needed to fetch/decode it via fetchMediaBase64. */
   image: { rawMessage: unknown; mimetype: string | null; caption: string | null } | null;
+  /** Present when the message is a file attachment (e.g. a locação candidate's ID/income proof sent as a PDF, not a photo) — same {key, message} shape, fetched the same way as image. */
+  document: { rawMessage: unknown; mimetype: string | null; fileName: string | null } | null;
 };
 
 /**
@@ -169,9 +238,23 @@ function extractInboundMessage(payload: unknown): InboundMessage | null {
       }
     : null;
 
+  // A candidate's ID/income proof (Agente 5) can arrive as a file
+  // attachment instead of a photo — unconfirmed against a real message
+  // (same discipline as imageMessage above), tried defensively.
+  const documentMessage = (message.documentMessage && typeof message.documentMessage === "object"
+    ? message.documentMessage
+    : null) as Record<string, unknown> | null;
+  const document = documentMessage
+    ? {
+        rawMessage: { key: d.key, message: d.message },
+        mimetype: typeof documentMessage.mimetype === "string" ? documentMessage.mimetype : null,
+        fileName: typeof documentMessage.fileName === "string" ? documentMessage.fileName : null,
+      }
+    : null;
+
   const phoneNumber = remoteJid ? remoteJid.split("@")[0] : null;
 
-  return { phoneNumber, fromMe, messageId, pushName, text, image };
+  return { phoneNumber, fromMe, messageId, pushName, text, image, document };
 }
 
 function extractString(payload: unknown, key: string): string | null {
