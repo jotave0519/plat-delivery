@@ -58,6 +58,98 @@ model Restaurant {
   /// Where transfer_to_number (ElevenLabs' built-in system tool) sends the
   /// call when the AI hands off to a human — a staff member's real phone.
   phoneAgentHumanTransferNumber String?
+  /// Which domain the phone agent runs — PEDIDO (food ordering, the
+  /// original/default behavior — Casa Bonfim and any existing tenant stays
+  /// on this automatically) or ATENDIMENTO_GENERICO (Agente 2 — scheduling/
+  /// FAQ/lead qualification for a generic service business). Decides which
+  /// module builds that call's prompt in the "iniciar" webhook — never
+  /// checked by the tool-call webhook, since tool names are already
+  /// unambiguous per domain.
+  phoneAgentDomain              PhoneAgentDomain @default(PEDIDO)
+  /// FAQ text for the generic-attendance domain — embedded directly as
+  /// prompt context, same pattern as faqText/aiEnabled's faqText for the
+  /// WhatsApp agent (never a callable tool).
+  faqGenericoText               String?          @db.Text
+  /// Base-price service list for the generic-attendance domain — shown to
+  /// the caller only as an estimate, never a closed quote (same discipline
+  /// as priceOrderItems: no price is ever finalized by the AI alone).
+  servicosGenericosJson         Json?
+
+  // ---------- Agente de avaliações no Google (Agente 1 — produto separado,
+  // mesmo backend; ver AGENTS.md) ----------
+  // Same additive/off-by-default shape as the other agent feature flags.
+  // A single Google account (agency model) manages every tenant's
+  // locations, so the OAuth credentials themselves live in env vars, not
+  // per-tenant — reviewAgentGoogleLocationId is what selects which
+  // location's reviews belong to this tenant.
+  reviewAgentEnabled          Boolean @default(false)
+  reviewAgentGoogleLocationId String?
+  reviewAgentTomDeVoz         String? @db.Text
+  /// The owner's own WhatsApp — where a negative-review draft is sent for
+  /// approval before anything is ever published on their behalf.
+  reviewAgentOwnerPhone       String?
+  /// The direct "write a review" link (Google Maps share link) sent to
+  /// customers when a review is requested. Not derived from
+  /// reviewAgentGoogleLocationId — the Business Profile API's location id
+  /// and the Google Maps Place ID used in that public link are different
+  /// identifiers, so the owner just pastes their own share link (a 10-second
+  /// one-time setup from the Google Maps app) instead of this platform
+  /// needing a second API/identifier just to construct it.
+  reviewAgentReviewLink       String?
+
+  // ---------- Domínio do agente de WhatsApp (texto) ----------
+  // Decides which conversational pipeline an inbound WhatsApp text message
+  // goes to — PEDIDO (food ordering, the original/default behavior — any
+  // existing tenant stays on this automatically), DESPACHO (Agente 3), or
+  // ORCAMENTO (Agente 4). Mutually exclusive by construction: a tenant is
+  // never more than one kind of business at a time. Started as a boolean
+  // (despachoAgentEnabled) when only 2 states existed; generalized to an
+  // enum here, mirroring PhoneAgentDomain on the voice channel, before a
+  // 3rd/4th agent could force an awkward boolean-per-agent shape. Safe to
+  // change now (not a data migration on real usage) — the Agente 3 field
+  // this replaces was never deployed.
+  whatsappAgentDomain WhatsappAgentDomain @default(PEDIDO)
+
+  // ---------- Agente 3 — despacho de serviços residenciais emergenciais ----------
+  /// Minutes to wait for a technician's accept/decline before offering the
+  /// call to the next available one — a tenant field (not a hardcoded
+  /// constant) so different service businesses can tune their own urgency
+  /// window.
+  despachoOfertaTimeoutMinutos Int    @default(5)
+  /// Where the "no technician accepted"/"no technician available" alert is
+  /// sent — same gap as reviewAgentOwnerPhone in Agente 1: without this
+  /// there's no one to notify when automatic dispatch can't resolve a chamado.
+  despachoEscalationPhone     String?
+
+  // ---------- Agente 4 — motor de orçamento automático (cotação) ----------
+  // No separate quoteAgentEnabled flag — whatsappAgentDomain === ORCAMENTO
+  // is itself the on/off switch (same lesson just applied by removing
+  // despachoAgentEnabled above: a domain enum only needs ONE selector, not
+  // a companion boolean per agent).
+  /// Descriptive only (e.g. "jardinagem") — sets conversation tone, never
+  /// gates which questions get asked. The questions themselves come from
+  /// whichever PricingRule rows the tenant has configured (see
+  /// src/server/actions/orcamento-ia-conversa.ts) — hardcoding 4 fixed
+  /// question flows per nicho would contradict the single-configurable-
+  /// engine differentiation this agent exists for (see the spec's own
+  /// seção 2).
+  quoteAgentNicho   String?
+  /// Days with no reply before the automatic follow-up fires — tenant field,
+  /// not a hardcoded constant (confirmed default: 2 days).
+  quoteFollowUpDias Int     @default(2)
+  /// How many days a sent quote stays valid before expiring automatically —
+  /// not specified as a number in the spec ("prazo de validade"); a sensible
+  /// tenant-configurable default, adjustable in Configurações without a
+  /// deploy.
+  quoteValidadeDias Int     @default(7)
+
+  // ---------- Agente 5 — locação autônoma para pequenas imobiliárias ----------
+  // No separate locacaoAgentEnabled flag either — whatsappAgentDomain ===
+  // LOCACAO is itself the on/off switch (same reasoning as Agentes 3/4).
+  /// Minutes blocked around an already-booked visit for the same corretor —
+  /// not specified as a number in the spec; confirmed default with the
+  /// user. Tenant-configurable, adjustable without a deploy.
+  locacaoVisitaDuracaoMin Int @default(30)
 
   users          User[]
   customers      Customer[]
@@ -70,6 +162,29 @@ model Restaurant {
   conversations  Conversation[]
   feedbacks      Feedback[]
   phoneCalls     PhoneCall[]
+  reviews             Review[]
+  reviewRequestLogs   ReviewRequestLog[]
+  horariosDisponiveis HorarioDisponivel[]
+  callbackRequests    CallbackRequest[]
+  tecnicos            TecnicoDisponibilidade[]
+  chamados            Chamado[]
+  pricingRules        PricingRule[]
+  quotes              Quote[]
+  corretores          Corretor[]
+  imoveis             Imovel[]
+  candidaturas        Candidatura[]
+}
+
+enum WhatsappAgentDomain {
+  PEDIDO
+  DESPACHO
+  ORCAMENTO
+  LOCACAO
+}
+
+enum PhoneAgentDomain {
+  PEDIDO
+  ATENDIMENTO_GENERICO
 }
 
 enum Role {
@@ -114,6 +229,9 @@ model Customer {
   conversations Conversation[]
   feedbacks     Feedback[]
   phoneCalls    PhoneCall[]
+  chamados      Chamado[]
+  quotes        Quote[]
+  candidaturas  Candidatura[]
 
   @@index([restaurantId])
   @@unique([restaurantId, phone])
@@ -569,4 +687,374 @@ model PhoneCall {
   order      Order?     @relation(fields: [orderId], references: [id])
 
   @@index([restaurantId])
+}
+
+// ---------- Agente de avaliações no Google (Agente 1) ----------
+//
+// Not the ordering/pedidos product — a separately-branded product sharing
+// this backend (see AGENTS.md). One Review per Google review, matched by
+// googleReviewId (idempotency, same role as Message.whatsappMessageId).
+// sentiment is derived deterministically from the star rating
+// (src/lib/review-sentiment.ts), never decided by the AI — only the
+// response TEXT is AI-generated; whether to auto-publish or escalate to the
+// owner is not.
+
+enum ReviewSentiment {
+  POSITIVA
+  NEUTRA
+  NEGATIVA
+}
+
+enum ReviewStatus {
+  PENDENTE        // detected, awaiting processing
+  RESPONDIDA      // positive/neutral — response generated and published automatically
+  AGUARDANDO_DONO // negative — draft sent to the owner via WhatsApp, awaiting approval
+  RESOLVIDA       // owner approved (or edited) and the response was published
+}
+
+model Review {
+  id                String           @id @default(cuid())
+  restaurantId      String
+  /// Google's own review id — the idempotency key, so re-fetching the same
+  /// review on a later poll never creates a duplicate row.
+  googleReviewId    String           @unique
+  authorName        String
+  rating            Int
+  text              String?          @db.Text
+  sentiment         ReviewSentiment?
+  status            ReviewStatus     @default(PENDENTE)
+  draftResponse     String?          @db.Text
+  publishedResponse String?          @db.Text
+  respondedAt       DateTime?
+  createdAt         DateTime         @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([restaurantId, status])
+}
+
+/// A scheduled post-service review request — durable in the database (same
+/// reasoning as Feedback.dueAt) so it survives a container restart/deploy.
+/// dueAt is when to send it; sentAt stays null until the poller actually
+/// sends it (distinct fields, unlike the original spec's single `sentAt`,
+/// which conflated "scheduled for" with "sent at").
+model ReviewRequestLog {
+  id           String    @id @default(cuid())
+  restaurantId String
+  /// Optional — a review request can be scheduled manually without tying
+  /// it to a specific order.
+  orderId      String?   @unique
+  phoneNumber  String
+  dueAt        DateTime
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([sentAt, dueAt])
+}
+
+// ---------- Agente 2 — atendimento genérico de voz (agenda + recuperação de ligação) ----------
+//
+// PhoneCall (already generic — same model used by the PEDIDO domain) keeps
+// serving both domains; only draftCart's shape changes meaning per domain,
+// same "JSON, rewritten whole" convention as everywhere else.
+
+model HorarioDisponivel {
+  id           String   @id @default(cuid())
+  restaurantId String
+  dataHora     DateTime
+  duracaoMin   Int      @default(30)
+  ocupado      Boolean  @default(false)
+  /// PhoneCall.id that claimed this slot, if any — not a Prisma relation
+  /// (same loose-reference style as ReviewRequestLog.orderId), just enough
+  /// to trace which call booked it.
+  callId       String?
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([restaurantId, dataHora])
+}
+
+/// Created whenever a call fails to connect (ElevenLabs' call_initiation_failure
+/// webhook) or connects but isn't resolved (analysis.call_successful === false)
+/// — the record of "we owe this caller a WhatsApp follow-up", sent immediately
+/// via sendAndRecordOutboundMessage, not on a delayed poller like Feedback/
+/// ReviewRequestLog (this one fires right away, per the 30s recovery target).
+model CallbackRequest {
+  id           String   @id @default(cuid())
+  restaurantId String
+  callerPhone  String
+  motivo       String?
+  status       String   @default("PENDENTE") // PENDENTE | CONTATADO
+  createdAt    DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+}
+
+// ---------- Agente 3 — despacho de serviços residenciais emergenciais ----------
+//
+// Not the ordering/pedidos product, and not the same Order model — a
+// separate domain (Chamado) on purpose, so the food-ordering flow already in
+// production is never at risk. Conversation/Message are still reused as-is
+// for the WhatsApp thread with the customer (Conversation.draftCart holds a
+// DraftChamado shape instead of a DraftCart when the tenant is a despacho
+// business — same "same JSON column, different shape per domain" convention
+// already used by PhoneCall.draftCart across the PEDIDO/ATENDIMENTO_GENERICO
+// domains in Agente 2).
+
+enum ChamadoStatus {
+  RECEBIDO
+  /// Offered to one specific technician, awaiting their accept/decline —
+  /// without this intermediate status the timeout/re-offer poller can't tell
+  /// "just created, nobody offered yet" apart from "waiting on someone
+  /// specific" (not in the original spec — added because the guardrail
+  /// "escalate if nobody accepts in X minutes" is meaningless without it).
+  OFERTADO
+  A_CAMINHO
+  EM_ATENDIMENTO
+  CONCLUIDO
+  CANCELADO
+}
+
+enum UrgenciaNivel {
+  NORMAL
+  URGENTE
+  EMERGENCIA
+}
+
+model TecnicoDisponibilidade {
+  id             String   @id @default(cuid())
+  restaurantId   String
+  nome           String
+  telefone       String
+  especialidades String[]
+  /// Bairros/regiões atendidas — texto livre no MVP (sem geolocalização real,
+  /// conforme o próprio documento reserva pra V2).
+  regioes        String[]
+  disponivel     Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  chamados   Chamado[]  @relation("ChamadoTecnico")
+
+  @@index([restaurantId])
+}
+
+model Chamado {
+  id           String        @id @default(cuid())
+  restaurantId String
+  customerId   String?
+  /// The technician currently offered the call (status OFERTADO) or already
+  /// assigned to it (A_CAMINHO onward) — null before the first offer and
+  /// briefly between a decline/timeout and the next offer.
+  tecnicoId    String?
+  problema     String        @db.Text
+  endereco     String
+  urgencia     UrgenciaNivel @default(NORMAL)
+  status       ChamadoStatus @default(RECEBIDO)
+  /// Every technician already offered this call (accepted-then-reassigned
+  /// never happens, but declined/timed-out do) — never re-offer to the same
+  /// one twice.
+  tecnicosOfertados String[] @default([])
+  /// Set when status = OFERTADO; the poller (processStalledChamados) re-offers
+  /// to the next technician once this passes, via an atomic claim (same
+  /// conditional-updateMany idiom as HorarioDisponivel/Feedback) so a
+  /// simultaneous accept and timeout can never both win.
+  ofertaExpiraEm    DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  restaurant Restaurant              @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  customer   Customer?               @relation(fields: [customerId], references: [id])
+  tecnico    TecnicoDisponibilidade? @relation("ChamadoTecnico", fields: [tecnicoId], references: [id])
+  eventos    ChamadoEvent[]
+
+  @@index([restaurantId])
+  @@index([restaurantId, status])
+}
+
+/// One row per status transition — same role as OrderEvent for Order.
+model ChamadoEvent {
+  id        String        @id @default(cuid())
+  chamadoId String
+  status    ChamadoStatus
+  createdAt DateTime      @default(now())
+
+  chamado Chamado @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+
+  @@index([chamadoId])
+}
+
+// ---------- Agente 4 — motor de orçamento automático (cotação) ----------
+//
+// Not the ordering/despacho product — a separately-branded product sharing
+// this backend (see AGENTS.md). Reuses Conversation/Message for the
+// WhatsApp thread exactly like Agente 3 does — Conversation.draftCart holds
+// a DraftQuote (Record<string variavel, number>) instead of a DraftCart/
+// AttendanceDraft when the tenant's whatsappAgentDomain is ORCAMENTO.
+//
+// The price itself is never decided by the AI — src/server/orcamento/
+// pricing.ts's calcularPreco is this agent's priceOrderItems, the sole
+// place a Quote's precoCalculado is ever computed, always re-derived from
+// PricingRule on the server.
+
+model PricingRule {
+  id            String  @id @default(cuid())
+  restaurantId  String
+  nome          String
+  /// Key into Quote.dadosColetados (e.g. "m2", "km", "item_peso"). The
+  /// special value "taxa_base" is always applied with quantity 1,
+  /// unconditionally — every other variável multiplies valorUnitario by
+  /// whatever was collected for it in the conversation.
+  variavel      String
+  valorUnitario Decimal @db.Decimal(10, 2)
+  /// Without a value for this variável, calcularPreco refuses to compute a
+  /// price at all (the "nunca chuta um valor — oferece visita técnica"
+  /// guardrail from the spec's seção 7) — not in the original doc's model,
+  /// added because there was no way to tell "insufficient data" from "zero"
+  /// otherwise. An optional rule (e.g. "item extra") simply contributes 0
+  /// when not mentioned.
+  obrigatoria   Boolean @default(true)
+  /// { minimo?: number } — a floor for this line's computed value. Full
+  /// tiered/bracket pricing ("faixa", also mentioned in the spec) is a
+  /// simplification left out of the MVP, not silently assumed implemented.
+  condicao      Json?
+  ativo         Boolean @default(true)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+}
+
+enum QuoteStatus {
+  ENVIADO
+  ACEITO
+  EXPIRADO
+  RECUSADO
+}
+
+model Quote {
+  id             String      @id @default(cuid())
+  restaurantId   String
+  customerId     String?
+  /// Record<string variavel, number> — the structured answers collected
+  /// during the conversation, keyed by PricingRule.variavel.
+  dadosColetados Json
+  precoCalculado Decimal     @db.Decimal(10, 2)
+  status         QuoteStatus @default(ENVIADO)
+  validoAte      DateTime
+  createdAt      DateTime    @default(now())
+
+  restaurant Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  customer   Customer?      @relation(fields: [customerId], references: [id])
+  followUp   QuoteFollowUp?
+
+  @@index([restaurantId])
+  @@index([restaurantId, status])
+}
+
+/// Scheduled the moment a Quote is sent (enviarEm = createdAt + Restaurant.
+/// quoteFollowUpDias) — durable in the database, same reasoning as Feedback/
+/// ReviewRequestLog, so it survives a container restart/deploy.
+model QuoteFollowUp {
+  id       String   @id @default(cuid())
+  quoteId  String   @unique
+  enviarEm DateTime
+  enviado  Boolean  @default(false)
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Agente 5 — locação autônoma para pequenas imobiliárias ----------
+//
+// Not the ordering/despacho/orçamento product — a separately-branded
+// product sharing this backend (see AGENTS.md). Entirely new data domain
+// per the spec's own note (seção 3) — no equivalent Order/Chamado/Quote
+// reuse here, only the conversation layer (Conversation/Message, tool-
+// calling) is shared. Fatia 1 only this round (agendamento de visita +
+// coleta de documentos) — ContratoLocacao/CobrancaRecorrente and the
+// approval-related StatusCandidatura values are deliberately not modeled
+// yet, per the spec's own explicit instruction to validate fatia 1 with
+// real clients before building the rest.
+
+enum StatusCandidatura {
+  VISITA_AGENDADA
+  DOCUMENTOS_PENDENTES
+  EM_ANALISE
+}
+
+model Corretor {
+  id           String   @id @default(cuid())
+  restaurantId String
+  nome         String
+  telefone     String
+  disponivel   Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  imoveis      Imovel[]
+  candidaturas Candidatura[]
+
+  @@index([restaurantId])
+}
+
+model Imovel {
+  id           String   @id @default(cuid())
+  restaurantId String
+  /// The corretor normally responsible for this listing — inherited by a
+  /// Candidatura's own corretorId when scheduling a visit, if set; falls
+  /// back to any available Corretor otherwise.
+  corretorId   String?
+  endereco     String
+  valorAluguel Decimal  @db.Decimal(10, 2)
+  /// URLs pasted manually (e.g. from a portal/Drive the agency already
+  /// uses) — no upload/storage infra added this round.
+  fotos        String[]
+  condicoes    String?  @db.Text
+  disponivel   Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  corretor     Corretor?     @relation(fields: [corretorId], references: [id])
+  candidaturas Candidatura[]
+
+  @@index([restaurantId])
+}
+
+model Candidatura {
+  id                 String            @id @default(cuid())
+  restaurantId       String
+  imovelId           String
+  customerId         String?
+  corretorId         String?
+  telefone           String
+  status             StatusCandidatura @default(VISITA_AGENDADA)
+  visitaAgendadaPara DateTime?
+  /// { identidade?: {base64,mimetype,recebidoEm}, comprovanteRenda?: {...} }
+  /// — same base64-in-Postgres pattern as Restaurant.menuPdfBase64/
+  /// Order.pixProofBase64, captured the same way capturePixProofImage does
+  /// (fetchMediaBase64). Fixed order (identidade first, then
+  /// comprovanteRenda) — see locacao-ia-conversa.ts.
+  documentos         Json?
+  createdAt          DateTime          @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  imovel     Imovel     @relation(fields: [imovelId], references: [id])
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+  corretor   Corretor?  @relation(fields: [corretorId], references: [id])
+
+  @@index([restaurantId])
+  @@index([restaurantId, status])
+  /// The hard guarantee against double-booking the same corretor at the
+  /// exact same instant — enforced by Postgres itself, not just application
+  /// logic (a violation is caught in code and reported as "just got taken").
+  /// The softer "within N minutes" collision check is an application-level
+  /// query before this insert is attempted (see agendar_visita).
+  @@unique([corretorId, visitaAgendadaPara])
 }
