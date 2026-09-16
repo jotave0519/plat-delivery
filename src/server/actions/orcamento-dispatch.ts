@@ -1,6 +1,7 @@
 import "server-only";
 
-import { sendAndRecordOutboundMessage } from "@/server/integrations/evolution/outbound-message";
+import { sendAndRecordOutboundMessage, sendAndRecordOutboundDocument } from "@/server/integrations/evolution/outbound-message";
+import { gerarOrcamentoPdf } from "@/server/orcamento/pdf";
 import type { PricingLine } from "@/server/orcamento/pricing";
 
 /**
@@ -43,4 +44,34 @@ export async function enviarOrcamentoWhatsapp(params: {
 
 export function formatFollowUpMessage(): string {
   return "Oi! Só passando pra saber se você viu o orçamento que te enviamos — ainda está dentro do prazo. Qualquer dúvida, me chama! 😊";
+}
+
+/**
+ * PDF path — used by the manual "criar orçamento" flow (Configurações não
+ * automatizadas: o dono monta o orçamento na plataforma, sem a IA conversando
+ * no WhatsApp). O motor de cálculo é o mesmo (calcularPreco); isto só empacota
+ * o resultado em documento em vez de mensagem de texto.
+ */
+export async function enviarOrcamentoPdfWhatsapp(params: {
+  restaurantId: string;
+  phoneNumber: string;
+  instanceName: string;
+  customerId?: string;
+  restaurantName: string;
+  customerName?: string;
+  detalhamento: PricingLine[];
+  total: number;
+  validoAte: Date;
+}): Promise<void> {
+  const { restaurantId, phoneNumber, instanceName, customerId, ...pdfParams } = params;
+  const pdfBuffer = await gerarOrcamentoPdf(pdfParams);
+  await sendAndRecordOutboundDocument({
+    restaurantId,
+    phoneNumber,
+    instanceName,
+    customerId,
+    base64: pdfBuffer.toString("base64"),
+    fileName: "orcamento.pdf",
+    caption: `Orçamento — ${pdfParams.restaurantName}`,
+  });
 }

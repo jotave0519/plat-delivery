@@ -1,10 +1,11 @@
 import { getTenant } from "@/lib/tenant";
-import { listQuotes } from "@/server/queries/orcamento";
+import { listQuotes, listPricingRules } from "@/server/queries/orcamento";
 import { QuoteCard } from "@/components/orcamentos/quote-card";
+import { NovoOrcamentoForm } from "@/components/orcamentos/novo-orcamento-form";
 
 export default async function OrcamentosPage() {
   const tenant = await getTenant();
-  const quotes = await listQuotes(tenant.restaurantId);
+  const [quotes, rules] = await Promise.all([listQuotes(tenant.restaurantId), listPricingRules(tenant.restaurantId)]);
 
   const enviados = quotes.filter((q) => q.status === "ENVIADO");
   const outros = quotes.filter((q) => q.status !== "ENVIADO");
@@ -14,9 +15,12 @@ export default async function OrcamentosPage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-[22px] font-semibold tracking-tight">Orçamentos</h1>
         <p className="text-[13px] text-faint">
-          O preço sai automaticamente da tabela configurada — a IA só coleta os dados pelo WhatsApp. Use as ações aqui só quando o cliente responder por outro canal (telefone, presencial).
+          O preço sai sempre da tabela configurada, calculado automaticamente. Pelo WhatsApp, a IA coleta os dados sozinha. Prefere montar você mesmo, sem
+          automação nenhuma? Use &ldquo;Novo orçamento manual&rdquo; abaixo.
         </p>
       </div>
+
+      <NovoOrcamentoForm rules={rules} />
 
       <div className="flex flex-col gap-3">
         <h2 className="text-[14px] font-semibold text-muted">Aguardando resposta ({enviados.length})</h2>

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import { sendTextMessage } from "@/server/integrations/evolution/client";
+import { sendTextMessage, sendDocument } from "@/server/integrations/evolution/client";
 
 /**
  * Every automated outbound WhatsApp text (agent replies, order-status
@@ -43,5 +43,41 @@ export async function sendAndRecordOutboundMessage(params: {
 
   await db.message.create({
     data: { conversationId: conversation.id, direction: "OUT", content: text, whatsappMessageId },
+  });
+}
+
+/**
+ * Same idempotency/transcript discipline as sendAndRecordOutboundMessage
+ * above, for a document instead of plain text (e.g. a orçamento PDF).
+ * Message.content has no attachment field, so the transcript records a
+ * short descriptive line instead of the document itself.
+ */
+export async function sendAndRecordOutboundDocument(params: {
+  restaurantId: string;
+  phoneNumber: string;
+  instanceName: string;
+  base64: string;
+  fileName: string;
+  caption?: string;
+  customerId?: string;
+}): Promise<void> {
+  const { restaurantId, phoneNumber, instanceName, base64, fileName, caption, customerId } = params;
+
+  let whatsappMessageId: string | undefined;
+  try {
+    const result = await sendDocument(instanceName, phoneNumber, base64, fileName, caption);
+    whatsappMessageId = result.key?.id;
+  } catch (err) {
+    console.error("Falha ao enviar documento via Evolution API:", err);
+  }
+
+  const conversation = await db.conversation.upsert({
+    where: { restaurantId_phoneNumber: { restaurantId, phoneNumber } },
+    update: {},
+    create: { restaurantId, phoneNumber, customerId },
+  });
+
+  await db.message.create({
+    data: { conversationId: conversation.id, direction: "OUT", content: `[PDF] ${fileName}`, whatsappMessageId },
   });
 }
