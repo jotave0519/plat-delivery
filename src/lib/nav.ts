@@ -31,18 +31,25 @@ export type NavItem = {
   visibleWhen?: (restaurant: RestaurantNavFlags) => boolean;
 };
 
+/// Módulos de delivery/restaurante — só fazem sentido pra um negócio de pedido
+/// de comida (whatsappAgentDomain === "PEDIDO"). Ficam fora do menu de
+/// qualquer tenant criado pra um dos outros agentes (despacho, orçamento,
+/// locação), pra essa plataforma não parecer uma plataforma de delivery
+/// pra quem não é.
+const isPedido = (r: RestaurantNavFlags) => r.whatsappAgentDomain === "PEDIDO";
+
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Pedidos", href: "/pedidos", icon: ReceiptText },
-  { label: "Cardápio", href: "/cardapio", icon: BookOpen },
+  { label: "Pedidos", href: "/pedidos", icon: ReceiptText, visibleWhen: isPedido },
+  { label: "Cardápio", href: "/cardapio", icon: BookOpen, visibleWhen: isPedido },
   { label: "Clientes", href: "/clientes", icon: Users },
-  { label: "Estoque", href: "/estoque", icon: Boxes },
+  { label: "Estoque", href: "/estoque", icon: Boxes, visibleWhen: isPedido },
   { label: "Financeiro", href: "/financeiro", icon: TrendingUp },
   { label: "Atendimento IA", href: "/atendimento-ia", icon: Bot },
   { label: "Despacho", href: "/despacho", icon: Wrench, visibleWhen: (r) => r.whatsappAgentDomain === "DESPACHO" },
   { label: "Orçamentos", href: "/orcamentos", icon: Calculator, visibleWhen: (r) => r.whatsappAgentDomain === "ORCAMENTO" },
   { label: "Candidaturas", href: "/candidaturas", icon: Key, visibleWhen: (r) => r.whatsappAgentDomain === "LOCACAO" },
-  { label: "Feedbacks", href: "/feedbacks", icon: MessageSquareHeart },
+  { label: "Feedbacks", href: "/feedbacks", icon: MessageSquareHeart, visibleWhen: isPedido },
   { label: "Configurações", href: "/configuracoes", icon: Settings },
 ];
 

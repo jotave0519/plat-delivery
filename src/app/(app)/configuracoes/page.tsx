@@ -78,10 +78,12 @@ export default async function ConfiguracoesPage() {
         <OpeningHoursForm initial={restaurant.openingHours} />
       </section>
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Notificações</h2>
-        <NotificationSettingsForm orderSoundEnabled={restaurant.orderSoundEnabled} />
-      </section>
+      {whatsappAgentDomain === "PEDIDO" ? (
+        <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+          <h2 className="text-[15px] font-semibold tracking-tight">Notificações</h2>
+          <NotificationSettingsForm orderSoundEnabled={restaurant.orderSoundEnabled} />
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
         <h2 className="text-[15px] font-semibold tracking-tight">Recepcionista por telefone (IA)</h2>
@@ -93,40 +95,52 @@ export default async function ConfiguracoesPage() {
         <WhatsappDomainSettingsForm current={whatsappAgentDomain} />
       </section>
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Despacho residencial (IA)</h2>
-        <DespachoSettingsForm settings={despachoSettings} />
-      </section>
+      {whatsappAgentDomain === "DESPACHO" ? (
+        <>
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+            <h2 className="text-[15px] font-semibold tracking-tight">Despacho residencial (IA)</h2>
+            <DespachoSettingsForm settings={despachoSettings} />
+          </section>
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Técnicos de campo</h2>
-        <TecnicosManager tecnicos={tecnicos} />
-      </section>
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+            <h2 className="text-[15px] font-semibold tracking-tight">Técnicos de campo</h2>
+            <TecnicosManager tecnicos={tecnicos} />
+          </section>
+        </>
+      ) : null}
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Orçamento automático (IA)</h2>
-        <OrcamentoSettingsForm settings={quoteSettings} />
-      </section>
+      {whatsappAgentDomain === "ORCAMENTO" ? (
+        <>
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+            <h2 className="text-[15px] font-semibold tracking-tight">Orçamento automático (IA)</h2>
+            <OrcamentoSettingsForm settings={quoteSettings} />
+          </section>
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Regras de preço</h2>
-        <PricingRulesManager rules={pricingRules} />
-      </section>
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+            <h2 className="text-[15px] font-semibold tracking-tight">Regras de preço</h2>
+            <PricingRulesManager rules={pricingRules} />
+          </section>
+        </>
+      ) : null}
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Locação imobiliária (IA)</h2>
-        <LocacaoSettingsForm settings={locacaoSettings} />
-      </section>
+      {whatsappAgentDomain === "LOCACAO" ? (
+        <>
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+            <h2 className="text-[15px] font-semibold tracking-tight">Locação imobiliária (IA)</h2>
+            <LocacaoSettingsForm settings={locacaoSettings} />
+          </section>
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Corretores</h2>
-        <CorretoresManager corretores={corretores} />
-      </section>
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+            <h2 className="text-[15px] font-semibold tracking-tight">Corretores</h2>
+            <CorretoresManager corretores={corretores} />
+          </section>
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Imóveis</h2>
-        <ImoveisManager imoveis={imoveis} corretores={corretores} />
-      </section>
+          <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+            <h2 className="text-[15px] font-semibold tracking-tight">Imóveis</h2>
+            <ImoveisManager imoveis={imoveis} corretores={corretores} />
+          </section>
+        </>
+      ) : null}
 
       <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
         <h2 className="text-[15px] font-semibold tracking-tight">Usuários</h2>

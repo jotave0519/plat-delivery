@@ -1,6 +1,7 @@
 import { Lock } from "lucide-react";
 
 import { getTenant } from "@/lib/tenant";
+import { db } from "@/lib/db";
 import { getWhatsappConnection, listConversations } from "@/server/queries/atendimento";
 import { getAiSettings } from "@/server/queries/configuracoes";
 import { listPhoneCalls } from "@/server/queries/telefonia";
@@ -13,6 +14,8 @@ import { MenuPdfForm } from "@/components/configuracoes/menu-pdf-form";
 export default async function AtendimentoIaPage() {
   const tenant = await getTenant();
   const canAccess = tenant.role === "OWNER" || tenant.role === "ADMIN";
+  const restaurant = await db.restaurant.findUniqueOrThrow({ where: { id: tenant.restaurantId }, select: { whatsappAgentDomain: true } });
+  const isPedido = restaurant.whatsappAgentDomain === "PEDIDO";
 
   if (!canAccess) {
     return (
@@ -65,10 +68,12 @@ export default async function AtendimentoIaPage() {
         <AiSettingsForm settings={aiSettings} />
       </section>
 
-      <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight">Cardápio em PDF</h2>
-        <MenuPdfForm fileName={aiSettings.menuPdfFileName} updatedAt={aiSettings.menuPdfUpdatedAt} />
-      </section>
+      {isPedido ? (
+        <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
+          <h2 className="text-[15px] font-semibold tracking-tight">Cardápio em PDF</h2>
+          <MenuPdfForm fileName={aiSettings.menuPdfFileName} updatedAt={aiSettings.menuPdfUpdatedAt} />
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-3.5 rounded-[20px] border border-border bg-surface p-5">
         <h2 className="text-[15px] font-semibold tracking-tight">Conversas recentes</h2>
